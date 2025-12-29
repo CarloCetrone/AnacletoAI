@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contattaci - Anacleto AI</title>
+    <meta name="description" content="Contatta il team di Anacleto AI per supporto e informazioni.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- CSS VARIABLES & RESET (Copiati dalla Home) --- */
+        :root {
+            --primary-gold: #FFD54F;
+            --primary-gold-dark: #ffca28;
+            --bg-dark: #1a1a1a;
+            --bg-darker: #121212;
+            --text-light: #f5f5f5;
+            --text-gray: #bdbdbd;
+            --accent-gray: #333;
+            --font-main: 'Open Sans', sans-serif;
+            --font-head: 'Roboto Condensed', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        main { flex: 1; }
+        a { text-decoration: none; color: inherit; transition: 0.3s; }
+        ul { list-style: none; }
+
+        /* --- UTILITY & ANIMATION --- */
+        .fade-in { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- HEADER / HERO MINI --- */
+        .hero-mini {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 3rem 1rem;
+            background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://ssl.gstatic.com/atari/images/level-header.png');
+            background-size: cover;
+            background-position: center;
+            border-bottom: 1px solid var(--accent-gray);
+        }
+
+        .hero-mini h1 {
+            font-family: var(--font-head);
+            font-size: 3rem;
+            color: var(--primary-gold);
+            text-transform: uppercase;
+        }
+
+        .hero-mini p {
+            color: var(--text-gray);
+            font-size: 1.1rem;
+            max-width: 600px;
+        }
+
+        /* --- CONTACT SECTION LAYOUT --- */
+        .contact-container {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+            display: grid;
+            grid-template-columns: 1fr 1.5fr; /* Info a sinistra, Form più largo a destra */
+            gap: 2rem;
+        }
+
+        /* --- INFO BOX (Sinistra) --- */
+        .contact-info-box {
+            background: var(--bg-darker);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--accent-gray);
+            height: fit-content;
+        }
+
+        .contact-info-box h3 {
+            font-family: var(--font-head);
+            font-size: 1.8rem;
+            color: var(--primary-gold);
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+            color: var(--text-gray);
+        }
+
+        .info-icon {
+            color: var(--primary-gold);
+            font-size: 1.2rem;
+            margin-right: 15px;
+            font-weight: bold;
+            min-width: 25px;
+        }
+
+        .map-placeholder {
+            width: 100%;
+            height: 250px; /* Increased height slightly for better visibility */
+            background-color: #252525;
+            border-radius: 8px;
+            margin-top: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--accent-gray);
+            overflow: hidden;
+        }
+        
+        .map-placeholder iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            /* Questa linea inverte i colori della mappa per farla sembrare "Dark Mode" */
+            filter: invert(90%) hue-rotate(180deg) grayscale(20%) contrast(90%);
+        }
+
+        /* --- FORM BOX (Destra) --- */
+        .contact-form-box {
+            background: #252525; /* Leggermente più chiaro dello sfondo */
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid var(--accent-gray);
+        }
+
+        .contact-form-box h2 {
+            font-family: var(--font-head);
+            color: var(--text-light);
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group { margin-bottom: 1.2rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: var(--text-gray); font-size: 0.9rem; }
+        
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            background-color: #333;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 4px;
+            font-family: var(--font-main);
+            transition: 0.3s;
+        }
+        .form-control:focus { border-color: var(--primary-gold); outline: none; background-color: #3a3a3a; }
+
+        .btn-cta {
+            background-color: var(--primary-gold);
+            color: #000;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 4px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(255, 213, 79, 0.3);
+            transition: transform 0.2s, background-color 0.2s;
+            cursor: pointer;
+            border: none;
+            display: block;
+            width: 100%; /* Bottone full width nel form contatti */
+            margin-top: 1rem;
+        }
+
+        .btn-cta:hover {
+            background-color: var(--primary-gold-dark);
+            transform: translateY(-2px);
+        }
+        
+        .btn-cta:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+       /* --- FOOTER --- */
+
+        footer {
+
+            padding: 2rem;
+
+            text-align: center;
+
+            border-top: 1px solid var(--accent-gray);
+
+            font-size: 0.8rem;
+
+            color: var(--text-gray);
+
+            margin-top: auto;
+
+        }
+        .footer-links { margin-bottom: 10px; }
+        .footer-links a { margin: 0 10px; color: var(--primary-gold); }
+        .footer-links a:hover { text-decoration: underline; }
+
+        /* --- RESPONSIVE --- */
+        @media (max-width: 768px) {
+            .contact-container { grid-template-columns: 1fr; }
+            .hero-mini h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="hero-mini fade-in">
+        <h1>Parla con Noi</h1>
+        <p>Hai domande su Anacleto AI o necessiti di supporto tecnico?<br>Siamo qui per aiutarti.</p>
+    </header>
+
+    <main class="fade-in">
+        <section class="contact-container">
+            
+            <div class="contact-info-box">
+                <h3>I nostri recapiti</h3>
+                <p style="margin-bottom: 2rem; color: var(--text-gray);">
+                    Il nostro team è disponibile dal Lunedì al Venerdì, dalle 9:00 alle 18:00.
+                </p>
+
+                <div class="info-item">
+                    <span class="info-icon">✉</span>
+                    <div>
+                        <strong>Email</strong><br>
+                        info@anacletoai.com
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-icon">📍</span>
+                    <div>
+                        <strong>Sede Operativa</strong><br>
+                        00100 Roma (RM)
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-icon">☎</span>
+                    <div>
+                        <strong>Telefono</strong><br>
+                        +39 370 312 8594
+                    </div>
+                </div>
+
+                <div class="map-placeholder">
+                    <iframe 
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d190029.0177286663!2d12.39591278526593!3d41.90998597547077!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x132f6196f9928ebb%3A0xb90f770693656e38!2sRome%2C%20Metropolitan%20City%20of%20Rome%20Capital%2C%20Italy!5e0!3m2!1sen!2sit!4v1700000000000!5m2!1sen!2sit" 
+                        allowfullscreen="" 
+                        loading="lazy" 
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
+
+            <div class="contact-form-box">
+                <h2>Inviaci un messaggio</h2>
+                <p style="color: #666; margin-bottom: 1.5rem;">Compila il form, ti risponderemo entro 24 ore lavorative.</p>
+
+                <form id="contact-form">
+                    <div class="form-group">
+                        <label for="c-name">Nome e Cognome</label>
+                        <input type="text" id="c-name" class="form-control" placeholder="Il tuo nome" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="c-email">Indirizzo Email</label>
+                        <input type="email" id="c-email" class="form-control" placeholder="nome@esempio.it" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="c-subject">Oggetto della richiesta</label>
+                        <select id="c-subject" class="form-control">
+                            <option value="Informazioni Generali">Informazioni Generali</option>
+                            <option value="Supporto Tecnico">Supporto Tecnico</option>
+                            <option value="Partnership">Partnership</option>
+                            <option value="Altro">Altro</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="c-message">Messaggio</label>
+                        <textarea id="c-message" class="form-control" rows="5" placeholder="Scrivi qui il tuo messaggio..." required></textarea>
+                    </div>
+
+                    <button type="submit" class="btn-cta">Invia Messaggio</button>
+                </form>
+            </div>
+
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Termini di Servizio</a>
+        </div>
+        <p>© 2024 Anacleto AI. Tutti i diritti riservati.</p>
+    </footer>
+
+    <script>
+        // --- LOGICA INVIO FORM CONTATTI (Aggiornata) ---
+        
+        const contactForm = document.getElementById('contact-form');
+        
+        // Inserisci qui il tuo URL dello script (lo stesso o uno nuovo, purché aggiorneremo il codice GAS)
+        const EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxetkV6yhb38N77gpku0-9t8ay9Vwz4mm4LDyvOmNvhB-2FWuzRk9QreHtLttfilzRUrQ/exec'; 
+
+        contactForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const submitBtn = contactForm.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerText;
+            
+            // 1. Feedback visivo
+            submitBtn.innerText = "Invio in corso...";
+            submitBtn.disabled = true;
+
+            // 2. Raccolta dati specifici per la pagina Contatti
+            const nome = document.getElementById('c-name').value;
+            const email = document.getElementById('c-email').value;
+            const oggetto = document.getElementById('c-subject').value;
+            const messaggio = document.getElementById('c-message').value;
+
+            try {
+                // 3. Preparazione URL con i parametri corretti
+                const url = new URL(EMAIL_SCRIPT_URL);
+                
+                // Passiamo i parametri puliti
+                url.searchParams.append('nome', nome);
+                url.searchParams.append('email', email);
+                url.searchParams.append('oggetto', oggetto);      // Parametro NUOVO specifico
+                url.searchParams.append('messaggio', messaggio); 
+
+                // 4. Invio (GET request)
+                await fetch(url, { method: 'GET', mode: 'no-cors' });
+
+                // 5. Successo
+                alert("Grazie " + nome + "! Il tuo messaggio è stato inviato correttamente.");
+                contactForm.reset();
+
+            } catch (error) {
+                console.error("Errore nell'invio:", error);
+                alert("Si è verificato un errore tecnico. Per favore riprova o scrivici direttamente via email.");
+            } finally {
+                // Ripristino bottone
+                submitBtn.innerText = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
