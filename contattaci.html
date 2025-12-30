@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 
     <style>
-        /* --- CSS VARIABLES & RESET (Copiati dalla Home) --- */
+        /* --- CSS VARIABLES & RESET --- */
         :root {
             --primary-gold: #FFD54F;
             --primary-gold-dark: #ffca28;
@@ -40,6 +40,83 @@
         main { flex: 1; }
         a { text-decoration: none; color: inherit; transition: 0.3s; }
         ul { list-style: none; }
+
+        /* --- NAVBAR --- */
+        .navbar {
+            background-color: var(--bg-darker);
+            border-bottom: 1px solid var(--accent-gray);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            font-family: var(--font-head);
+            font-size: 1.5rem;
+            color: var(--primary-gold);
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .nav-menu {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .nav-link {
+            color: var(--text-light);
+            font-weight: 600;
+            font-size: 0.95rem;
+            position: relative;
+        }
+
+        .nav-link:hover {
+            color: var(--primary-gold);
+        }
+
+        .btn-nav {
+            padding: 8px 20px;
+            font-size: 0.9rem;
+            background-color: transparent;
+            border: 1px solid var(--primary-gold);
+            color: var(--primary-gold);
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-nav:hover {
+            background-color: var(--primary-gold);
+            color: #000;
+        }
+
+        .hamburger {
+            display: none;
+            cursor: pointer;
+        }
+
+        .bar {
+            display: block;
+            width: 25px;
+            height: 3px;
+            margin: 5px auto;
+            transition: all 0.3s ease-in-out;
+            background-color: var(--text-light);
+        }
 
         /* --- UTILITY & ANIMATION --- */
         .fade-in { animation: fadeIn 0.5s ease; }
@@ -117,7 +194,7 @@
 
         .map-placeholder {
             width: 100%;
-            height: 250px; /* Increased height slightly for better visibility */
+            height: 250px;
             background-color: #252525;
             border-radius: 8px;
             margin-top: 2rem;
@@ -132,13 +209,12 @@
             width: 100%;
             height: 100%;
             border: 0;
-            /* Questa linea inverte i colori della mappa per farla sembrare "Dark Mode" */
             filter: invert(90%) hue-rotate(180deg) grayscale(20%) contrast(90%);
         }
 
         /* --- FORM BOX (Destra) --- */
         .contact-form-box {
-            background: #252525; /* Leggermente più chiaro dello sfondo */
+            background: #252525;
             padding: 2.5rem;
             border-radius: 12px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -179,7 +255,7 @@
             cursor: pointer;
             border: none;
             display: block;
-            width: 100%; /* Bottone full width nel form contatti */
+            width: 100%;
             margin-top: 1rem;
         }
 
@@ -198,19 +274,12 @@
        /* --- FOOTER --- */
 
         footer {
-
             padding: 2rem;
-
             text-align: center;
-
             border-top: 1px solid var(--accent-gray);
-
             font-size: 0.8rem;
-
             color: var(--text-gray);
-
             margin-top: auto;
-
         }
         .footer-links { margin-bottom: 10px; }
         .footer-links a { margin: 0 10px; color: var(--primary-gold); }
@@ -220,11 +289,52 @@
         @media (max-width: 768px) {
             .contact-container { grid-template-columns: 1fr; }
             .hero-mini h1 { font-size: 2rem; }
+
+            /* Navbar Responsive */
+            .hamburger { display: block; }
+            .hamburger.active .bar:nth-child(2) { opacity: 0; }
+            .hamburger.active .bar:nth-child(1) { transform: translateY(8px) rotate(45deg); }
+            .hamburger.active .bar:nth-child(3) { transform: translateY(-8px) rotate(-45deg); }
+            
+            .nav-menu {
+                position: fixed;
+                left: -100%;
+                top: 70px;
+                gap: 0;
+                flex-direction: column;
+                background-color: var(--bg-darker);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: 0 10px 10px rgba(0,0,0,0.5);
+                padding-bottom: 2rem;
+            }
+            .nav-menu.active { left: 0; }
+            .nav-menu li { margin: 16px 0; }
         }
     </style>
 </head>
 <body>
 
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="home" class="nav-logo">ANACLETO AI</a>
+            <ul class="nav-menu">
+                <li><a href="home" class="nav-link">Home</a></li>
+                <li><a href="contattaci" class="nav-link">Contattaci</a></li>
+                <li>
+                    <a href="home">
+                        <button class="btn-nav">Richiedi Demo</button>
+                    </a>
+                </li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
     <header class="hero-mini fade-in">
         <h1>Parla con Noi</h1>
         <p>Hai domande su Anacleto AI o necessiti di supporto tecnico?<br>Siamo qui per aiutarti.</p>
@@ -319,7 +429,21 @@
     </footer>
 
     <script>
-        // --- LOGICA INVIO FORM CONTATTI (Aggiornata) ---
+        // --- NAVBAR MOBILE SCRIPT ---
+        const hamburger = document.querySelector(".hamburger");
+        const navMenu = document.querySelector(".nav-menu");
+
+        hamburger.addEventListener("click", () => {
+            hamburger.classList.toggle("active");
+            navMenu.classList.toggle("active");
+        });
+
+        document.querySelectorAll(".nav-link").forEach(n => n.addEventListener("click", () => {
+            hamburger.classList.remove("active");
+            navMenu.classList.remove("active");
+        }));
+
+        // --- LOGICA INVIO FORM CONTATTI ---
         
         const contactForm = document.getElementById('contact-form');
         
