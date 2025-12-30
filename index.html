@@ -1,26 +1,718 @@
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
+    <title>Anacleto AI - Il Tuo Partner Intelligente</title>
+
+    <meta name="description" content="Anacleto AI offre soluzioni di intelligenza artificiale avanzate per... [Inserisci qui una breve descrizione accattivante].">
+
+    <link rel="canonical" href="https://your-custom-domain.com/">
+
     <link rel="icon" type="image/png" href="images/favicon.png">
+
+    <meta property="og:title" content="Anacleto AI">
+    <meta property="og:description" content="Soluzioni di intelligenza artificiale avanzate.">
+    <meta property="og:image" content="https://your-custom-domain.com/images/social-preview.jpg">
+    <meta property="og:url" content="https://your-custom-domain.com/">
+    <meta property="og:type" content="website">
+    <!--
     <meta charset="UTF-8">
-    <title>Anacleto AI</title>
-    
-    <meta http-equiv="refresh" content="0; url=home">
-    
-    <link rel="canonical" href="home">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anacleto AI - L'assistente digitale</title>
+    <meta name="description" content="Anacleto AI: L'assistente digitale al servizio dei tuoi clienti.">
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" href="images/favicon.png">
-    <script type="text/javascript">
-        window.location.href = "home";
-    </script>
+    <style>
+        /* --- CSS VARIABLES & RESET --- */
+        :root {
+            --primary-gold: #FFD54F;
+            --primary-gold-dark: #ffca28;
+            --bg-dark: #1a1a1a;
+            --bg-darker: #121212;
+            --text-light: #f5f5f5;
+            --text-gray: #bdbdbd;
+            --accent-gray: #333;
+            --font-main: 'Open Sans', sans-serif;
+            --font-head: 'Roboto Condensed', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        main { flex: 1; }
+
+        a { text-decoration: none; color: inherit; transition: 0.3s; }
+        ul { list-style: none; }
+
+        /* --- UTILITY --- */
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.5s ease; }
+
+        /* --- NAVBAR --- */
+        .navbar {
+            background-color: var(--bg-darker);
+            border-bottom: 1px solid var(--accent-gray);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            font-family: var(--font-head);
+            font-size: 1.5rem;
+            color: var(--primary-gold);
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .nav-menu {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .nav-link {
+            color: var(--text-light);
+            font-weight: 600;
+            font-size: 0.95rem;
+            position: relative;
+        }
+
+        .nav-link:hover {
+            color: var(--primary-gold);
+        }
+
+        .btn-nav {
+            padding: 8px 20px;
+            font-size: 0.9rem;
+            background-color: transparent;
+            border: 1px solid var(--primary-gold);
+            color: var(--primary-gold);
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-nav:hover {
+            background-color: var(--primary-gold);
+            color: #000;
+        }
+
+        .hamburger {
+            display: none;
+            cursor: pointer;
+        }
+
+        .bar {
+            display: block;
+            width: 25px;
+            height: 3px;
+            margin: 5px auto;
+            transition: all 0.3s ease-in-out;
+            background-color: var(--text-light);
+        }
+
+        /* --- HERO SECTION --- */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 1rem;
+            background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://ssl.gstatic.com/atari/images/level-header.png');
+            background-size: cover;
+            background-position: center;
+            min-height: 60vh;
+            justify-content: center;
+        }
+
+        .hero h1 {
+            font-family: var(--font-head);
+            font-size: 3.5rem;
+            line-height: 1.1;
+            margin-bottom: 1rem;
+            color: var(--primary-gold);
+            text-transform: uppercase;
+        }
+
+        .hero h2 {
+            font-size: 1.5rem;
+            font-weight: 400;
+            max-width: 800px;
+            margin-bottom: 2rem;
+            color: var(--text-light);
+        }
+
+        .btn-cta {
+            background-color: var(--primary-gold);
+            color: #000;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 4px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(255, 213, 79, 0.3);
+            transition: transform 0.2s, background-color 0.2s;
+            cursor: pointer;
+            border: none;
+            display: inline-block;
+        }
+
+        .btn-cta:hover {
+            background-color: var(--primary-gold-dark);
+            transform: translateY(-2px);
+        }
+        
+        .btn-cta:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* --- CHAT SECTION --- */
+        .chat-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: -3rem auto 4rem;
+            padding: 0 1rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .chat-info {
+            background: var(--bg-darker);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--accent-gray);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .chat-info h3 {
+            font-family: var(--font-head);
+            font-size: 2rem;
+            color: var(--primary-gold);
+            margin-bottom: 1rem;
+        }
+
+        /* --- CHATBOT INTERFACE --- */
+        .chat-wrapper {
+            background-color: #252525;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--accent-gray);
+        }
+
+        .chat-header {
+            background-color: #333;
+            color: var(--primary-gold);
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            font-family: var(--font-head);
+            letter-spacing: 1px;
+        }
+
+        #chat-window {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #1a1a1a;
+        }
+
+        .message {
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 85%;
+            font-size: 0.9rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .bot-message {
+            background-color: #2d2d2d;
+            color: #f0f0f0;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #333;
+        }
+
+        .user-message {
+            background-color: var(--primary-gold);
+            color: #1a1a1a;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+            font-weight: 600;
+        }
+
+        #input-form {
+            display: flex;
+            padding: 15px;
+            background-color: #252525;
+            border-top: 1px solid #333;
+            gap: 10px;
+        }
+
+        #user-input {
+            flex-grow: 1;
+            background-color: #333;
+            border: 1px solid #444;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            outline: none;
+        }
+        
+        #user-input:focus { border-color: var(--primary-gold); }
+
+        #send-button {
+            background-color: var(--primary-gold);
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- SOCIAL PROOF --- */
+        .social-proof {
+            text-align: center;
+            padding: 4rem 1rem;
+            background-color: var(--bg-darker);
+        }
+
+        .social-proof h3 {
+            font-family: var(--font-head);
+            font-size: 1.8rem;
+            margin-bottom: 2rem;
+            color: var(--text-light);
+        }
+
+        .clients-grid {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .client-card {
+            background: #252525;
+            padding: 1.5rem;
+            border-radius: 8px;
+            
+            /* MODIFICA QUI: Rendi la larghezza responsive */
+            width: 100%;          /* Occupa tutto lo spazio disponibile... */
+            max-width: 200px;     /* ...ma non superare mai i 200px */
+            
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: 0.3s;
+        }
+
+        .client-card:hover { transform: translateY(-5px); background: #333; }
+        
+        .client-logo {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 15px;
+            border: 2px solid var(--primary-gold);
+        }
+
+        .client-card span { font-weight: 600; font-size: 0.9rem; }
+
+        /* --- DEMO VIEW STYLES --- */
+        #demo-view {
+            padding: 4rem 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .demo-card {
+            background: var(--bg-darker);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--accent-gray);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: left;
+        }
+
+        .demo-card h2 {
+            font-family: var(--font-head);
+            color: var(--primary-gold);
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .form-group { margin-bottom: 1.2rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: var(--text-gray); }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 4px;
+        }
+        .form-control:focus { border-color: var(--primary-gold); outline: none; }
+
+        .btn-back {
+            background: transparent;
+            color: var(--text-gray);
+            border: 1px solid var(--text-gray);
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn-back:hover { background: #333; color: #fff; }
+
+         /* --- FOOTER --- */
+
+        footer {
+
+            padding: 2rem;
+
+            text-align: center;
+
+            border-top: 1px solid var(--accent-gray);
+
+            font-size: 0.8rem;
+
+            color: var(--text-gray);
+
+            margin-top: auto;
+
+        }
+        .footer-links { margin-bottom: 10px; }
+        .footer-links a { margin: 0 10px; color: var(--primary-gold); }
+        .footer-links a:hover { text-decoration: underline; }
+
+        /* --- ANIMATIONS --- */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- RESPONSIVE --- */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .chat-section { grid-template-columns: 1fr; margin-top: 2rem; }
+
+            /* Navbar Responsive */
+            .hamburger { display: block; }
+            .hamburger.active .bar:nth-child(2) { opacity: 0; }
+            .hamburger.active .bar:nth-child(1) { transform: translateY(8px) rotate(45deg); }
+            .hamburger.active .bar:nth-child(3) { transform: translateY(-8px) rotate(-45deg); }
+            
+            .nav-menu {
+                position: fixed;
+                left: -100%;
+                top: 70px;
+                gap: 0;
+                flex-direction: column;
+                background-color: var(--bg-darker);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: 0 10px 10px rgba(0,0,0,0.5);
+                padding-bottom: 2rem;
+            }
+            .nav-menu.active { left: 0; }
+            .nav-menu li { margin: 16px 0; }
+        }
+    </style>
 </head>
 <body>
-    <p>If you are not redirected automatically, please <a href="home">click here</a>.</p>
+
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="home" class="nav-logo">ANACLETO AI</a>
+            <ul class="nav-menu">
+                <li><a href="home" class="nav-link">Home</a></li>
+                <li><a href="contattaci" class="nav-link">Contattaci</a></li>
+                <li><button id="nav-btn-demo" class="btn-nav">Richiedi Demo</button></li>
+            </ul>
+            <div class="hamburger">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+    <main>
+        <div id="home-view" class="fade-in">
+            <section class="hero">
+                <H1>L'assistente digitale<br>al servizio dei tuoi clienti</H1>
+                <h2>Automatizza il tuo servizio clienti e migliora il tuo flusso di lavoro con soluzioni su misura per la tua attività.</h2>
+                
+                <button id="btn-request-demo" class="btn-cta">Richiedi una demo gratuita</button>
+            </section>
+
+            <section class="chat-section">
+                <div class="chat-info">
+                    <h3>Per qualsiasi informazione, chiedi ad Anacleto</h3>
+                    <p style="margin-bottom: 1.5rem; color: var(--text-gray);">
+                        Il nostro assistente digitale è disponibile 24/7 per rispondere alle domande, fornire dettagli sui servizi e guidare i tuoi clienti. Richiedi una demo gratuita per vedere Anacleto configurato per gestire le esigenze della tua attività.
+                    </p>
+                    <ul style="color: var(--text-gray); display: flex; flex-direction: column; gap: 10px;">
+                        <li>✓ Risposte immediate</li>
+                        <li>✓ Apprendimento continuo</li>
+                        <li>✓ Integrazione semplice</li>
+                    </ul>
+                </div>
+
+                <div class="chat-wrapper">
+                    <div class="chat-header">ASSISTENTE ANACLETO</div>
+                    <div id="chat-window">
+                        <div class="message bot-message">
+                            Ciao! Sono Anacleto il tuo assistente digitale personale. Come posso esserti utile oggi?
+                        </div>
+                    </div>
+                    <form id="input-form">
+                        <input type="text" id="user-input" placeholder="Scrivi un messaggio..." autocomplete="off">
+                        <button type="submit" id="send-button">➤</button>
+                    </form>
+                </div>
+            </section>
+
+            <section class="social-proof">
+                <h3>Molte aziende hanno già scelto Anacleto</h3>
+                <div class="clients-grid">
+                    <a href="mareblu" target="_top" class="client-card">
+                        <img src="images/mareblu.jpg" alt="Logo" class="client-logo">
+                        <span>Campeggio Mareblu</span>
+                        <small style="color: #666; margin-top: 5px;">Prova l'assistente →</small>
+                    </a>
+                    <a href="mareluna" target="_top" class="client-card">
+                        <img src="images/mareluna.jpg" alt="Logo" class="client-logo">
+                        <span>Campeggio Mareluna</span>
+                        <small style="color: #666; margin-top: 5px;">Prova l'assistente →</small>
+                    </a>
+                    <a href="lumina" target="_top" class="client-card">
+                        <img src="images/lumina.jpg" alt="Logo" class="client-logo">
+                        <span>Lumina Hub</span>
+                        <small style="color: #666; margin-top: 5px;">Prova l'assistente →</small>
+                    </a>
+                </div>
+            </section>
+        </div>
+
+        <section id="demo-view" class="hidden fade-in">
+            <div class="demo-card">
+                <h2>Prenota la tua Demo</h2>
+                <p style="color: #bdbdbd; margin-bottom: 2rem; text-align: center;">Compila il modulo sottostante. Un nostro esperto ti contatterà entro 24 ore per mostrarti Anacleto in azione.</p>
+                
+                <form id="demo-form">
+                    <div class="form-group">
+                        <label for="name">Nome Completo</label>
+                        <input type="text" id="name" class="form-control" placeholder="Mario Rossi" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Aziendale</label>
+                        <input type="email" id="email" class="form-control" placeholder="mario@azienda.it" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="company">Nome Azienda</label>
+                        <input type="text" id="company" class="form-control" placeholder="La tua azienda Srl" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Esigenze particolari (Opzionale)</label>
+                        <textarea id="message" class="form-control" rows="4" placeholder="Vorrei automatizzare le prenotazioni..."></textarea>
+                    </div>
+                    
+                    <div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+                        <button type="button" id="btn-back-home" class="btn-back">← Indietro</button>
+                        <button type="submit" class="btn-cta">Invia Richiesta</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+<div class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Termini di Servizio</a>
+        </div>
+        <p>© 2024 Anacleto AI. Tutti i diritti riservati.</p>
+    </footer>
+
+    <script>
+        // --- LOGICA CHATBOT ---
+        const chatWindow = document.getElementById('chat-window');
+        const inputForm = document.getElementById('input-form');
+        const userInput = document.getElementById('user-input');
+        // ID sessione per la chat
+        const conversation_id = "session_" + Date.now() + Math.random().toString(36).substring(2, 9);
+        
+        // URL SCRIPT PER LA CHAT (Originale)
+        const CHAT_API_URL = 'https://script.google.com/macros/s/AKfycbwYqzFN2cMmMkP3ikWEuizC_W5sgTpUueqja0E8kpzAQ4wv_7ZBZn5eMM9fMNyl4S0/exec';
+
+        inputForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const userMessageText = userInput.value.trim();
+
+            if (userMessageText) {
+                displayMessage(userMessageText, 'user');
+                userInput.value = '';
+
+                const loadingId = 'loading-' + Date.now();
+                const loadingDiv = document.createElement('div');
+                loadingDiv.id = loadingId;
+                loadingDiv.classList.add('message', 'bot-message');
+                loadingDiv.innerHTML = '<span style="font-style:italic; color:#888;">Sta scrivendo...</span>';
+                chatWindow.appendChild(loadingDiv);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+
+                try {
+                    const params = new URLSearchParams();
+                    params.append('conversation_id', conversation_id);
+                    params.append('prompt', userMessageText);
+                    params.append('agent_id', "anacleto");
+
+                    const response = await fetch(`${CHAT_API_URL}?${params.toString()}`);
+                    if (!response.ok) throw new Error('Network response');
+                    const data = await response.text();
+                    
+                    document.getElementById(loadingId).remove();
+                    displayMessage(data || "Nessuna risposta ricevuta.", 'bot');
+
+                } catch (error) {
+                    if(document.getElementById(loadingId)) document.getElementById(loadingId).remove();
+                    displayMessage('Errore di connessione. Riprova più tardi.', 'bot');
+                }
+            }
+        });
+
+        function displayMessage(text, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', `${sender}-message`);
+            messageElement.innerText = text;
+            chatWindow.appendChild(messageElement);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // --- LOGICA NAVIGAZIONE E INVIO EMAIL ---
+        const btnRequestDemo = document.getElementById('btn-request-demo');
+        const btnBackHome = document.getElementById('btn-back-home');
+        const homeView = document.getElementById('home-view');
+        const demoView = document.getElementById('demo-view');
+        const demoForm = document.getElementById('demo-form');
+        
+        // URL SCRIPT PER L'INVIO EMAIL (Il tuo nuovo link)
+        const EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxetkV6yhb38N77gpku0-9t8ay9Vwz4mm4LDyvOmNvhB-2FWuzRk9QreHtLttfilzRUrQ/exec'; 
+
+        // Navigazione: Vai alla pagina Demo
+        btnRequestDemo.addEventListener('click', function(e) {
+            e.preventDefault();
+            homeView.classList.add('hidden');
+            demoView.classList.remove('hidden');
+            window.scrollTo(0, 0);
+        });
+
+        // Navigazione: Torna alla Home
+        btnBackHome.addEventListener('click', function() {
+            demoView.classList.add('hidden');
+            homeView.classList.remove('hidden');
+            window.scrollTo(0, 0);
+        });
+
+        // Gestione invio modulo Demo
+        demoForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const submitBtn = demoForm.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerText;
+            
+            // 1. Mostra feedback di caricamento
+            submitBtn.innerText = "Invio in corso...";
+            submitBtn.disabled = true;
+
+            // 2. Raccogli i dati dal form
+            const nome = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const azienda = document.getElementById('company').value;
+            const messaggio = document.getElementById('message').value;
+
+            try {
+                // 3. Prepara l'URL con i parametri
+                const url = new URL(EMAIL_SCRIPT_URL);
+                url.searchParams.append('nome', nome);
+                url.searchParams.append('email', email);
+                url.searchParams.append('azienda', azienda);
+                url.searchParams.append('messaggio', messaggio);
+
+                // 4. Invia la richiesta (mode: 'no-cors' è essenziale per Apps Script Web App semplici)
+                await fetch(url, { method: 'GET', mode: 'no-cors' });
+
+                // 5. Successo
+                alert("Grazie " + nome + "! La tua richiesta è stata inviata con successo. Ti contatteremo presto.");
+                demoForm.reset();
+                
+                // Torna alla home
+                demoView.classList.add('hidden');
+                homeView.classList.remove('hidden');
+                window.scrollTo(0, 0);
+
+            } catch (error) {
+                console.error("Errore nell'invio:", error);
+                alert("C'è stato un problema nell'invio del modulo. Per favore riprova.");
+            } finally {
+                // Ripristina il bottone
+                submitBtn.innerText = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
 </body>
-
 </html>
-
-
-
 
 
 
