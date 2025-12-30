@@ -1,15 +1,35 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
+    <title>Anacleto AI</title>
+
+    <meta name="description" content="Anacleto AI offre soluzioni di intelligenza artificiale avanzate per automatizzare e semplificare il servizio clienti della tua azienda.">
+    <link rel="canonical" href="https://anacletoai.com/">
+    <link rel="icon" type="image/png" href="images/favicon.png">
+
+    <meta property="og:title" content="Anacleto AI">
+    <meta property="og:description" content="Soluzioni di intelligenza artificiale avanzate.">
+    <meta property="og:image" content="https://anacletoai.com/images/social-preview.jpg">
+    <meta property="og:url" content="https://anacletoai.com/">
+    <meta property="og:type" content="website">
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anacleto AI - L'assistente digitale</title>
-    <meta name="description" content="Anacleto AI: L'assistente digitale al servizio dei tuoi clienti.">
-    
+
+    <link rel="preload" as="image" href="https://ssl.gstatic.com/atari/images/level-header.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" href="images/favicon.png">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" 
+          rel="stylesheet" 
+          media="print" 
+          onload="this.media='all'">
+    
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    </noscript>
+
     <style>
         /* --- CSS VARIABLES & RESET --- */
         :root {
@@ -130,6 +150,7 @@
             align-items: center;
             text-align: center;
             padding: 4rem 1rem;
+            /* Image is preloaded in head for performance */
             background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://ssl.gstatic.com/atari/images/level-header.png');
             background-size: cover;
             background-position: center;
@@ -326,11 +347,8 @@
             background: #252525;
             padding: 1.5rem;
             border-radius: 8px;
-            
-            /* MODIFICA QUI: Rendi la larghezza responsive */
-            width: 100%;          /* Occupa tutto lo spazio disponibile... */
-            max-width: 200px;     /* ...ma non superare mai i 200px */
-            
+            width: 100%;          
+            max-width: 200px;    
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -401,19 +419,12 @@
          /* --- FOOTER --- */
 
         footer {
-
             padding: 2rem;
-
             text-align: center;
-
             border-top: 1px solid var(--accent-gray);
-
             font-size: 0.8rem;
-
             color: var(--text-gray);
-
             margin-top: auto;
-
         }
         .footer-links { margin-bottom: 10px; }
         .footer-links a { margin: 0 10px; color: var(--primary-gold); }
@@ -458,9 +469,9 @@
 
     <nav class="navbar">
         <div class="nav-container">
-            <a href="home" class="nav-logo">ANACLETO AI</a>
+            <a href="/" class="nav-logo">ANACLETO AI</a>
             <ul class="nav-menu">
-                <li><a href="home" class="nav-link">Home</a></li>
+                <li><a href="/" class="nav-link">Home</a></li>
                 <li><a href="contattaci" class="nav-link">Contattaci</a></li>
                 <li><button id="nav-btn-demo" class="btn-nav">Richiedi Demo</button></li>
             </ul>
@@ -562,7 +573,7 @@
     </main>
 
     <footer>
-<div class="footer-links">
+        <div class="footer-links">
             <a href="#">Privacy Policy</a>
             <a href="#">Termini di Servizio</a>
         </div>
@@ -577,7 +588,7 @@
         // ID sessione per la chat
         const conversation_id = "session_" + Date.now() + Math.random().toString(36).substring(2, 9);
         
-        // URL SCRIPT PER LA CHAT (Originale)
+        // URL SCRIPT PER LA CHAT
         const CHAT_API_URL = 'https://script.google.com/macros/s/AKfycbwYqzFN2cMmMkP3ikWEuizC_W5sgTpUueqja0E8kpzAQ4wv_7ZBZn5eMM9fMNyl4S0/exec';
 
         inputForm.addEventListener('submit', async function(event) {
@@ -626,21 +637,34 @@
 
         // --- LOGICA NAVIGAZIONE E INVIO EMAIL ---
         const btnRequestDemo = document.getElementById('btn-request-demo');
+        const navBtnDemo = document.getElementById('nav-btn-demo'); // Added selector for nav button
         const btnBackHome = document.getElementById('btn-back-home');
         const homeView = document.getElementById('home-view');
         const demoView = document.getElementById('demo-view');
         const demoForm = document.getElementById('demo-form');
         
-        // URL SCRIPT PER L'INVIO EMAIL (Il tuo nuovo link)
+        // URL SCRIPT PER L'INVIO EMAIL
         const EMAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxetkV6yhb38N77gpku0-9t8ay9Vwz4mm4LDyvOmNvhB-2FWuzRk9QreHtLttfilzRUrQ/exec'; 
 
-        // Navigazione: Vai alla pagina Demo
-        btnRequestDemo.addEventListener('click', function(e) {
-            e.preventDefault();
+        // Function to switch to demo view
+        function showDemo() {
             homeView.classList.add('hidden');
             demoView.classList.remove('hidden');
             window.scrollTo(0, 0);
+        }
+
+        // Event listeners for demo buttons
+        btnRequestDemo.addEventListener('click', function(e) {
+            e.preventDefault();
+            showDemo();
         });
+
+        if (navBtnDemo) {
+            navBtnDemo.addEventListener('click', function(e) {
+                e.preventDefault();
+                showDemo();
+            });
+        }
 
         // Navigazione: Torna alla Home
         btnBackHome.addEventListener('click', function() {
@@ -648,6 +672,22 @@
             homeView.classList.remove('hidden');
             window.scrollTo(0, 0);
         });
+
+        // Hamburger Menu Logic
+        const hamburger = document.querySelector(".hamburger");
+        const navMenu = document.querySelector(".nav-menu");
+
+        if(hamburger) {
+            hamburger.addEventListener("click", () => {
+                hamburger.classList.toggle("active");
+                navMenu.classList.toggle("active");
+            });
+
+            document.querySelectorAll(".nav-link").forEach(n => n.addEventListener("click", () => {
+                hamburger.classList.remove("active");
+                navMenu.classList.remove("active");
+            }));
+        }
 
         // Gestione invio modulo Demo
         demoForm.addEventListener('submit', async function(e) {
@@ -674,7 +714,7 @@
                 url.searchParams.append('azienda', azienda);
                 url.searchParams.append('messaggio', messaggio);
 
-                // 4. Invia la richiesta (mode: 'no-cors' è essenziale per Apps Script Web App semplici)
+                // 4. Invia la richiesta
                 await fetch(url, { method: 'GET', mode: 'no-cors' });
 
                 // 5. Successo
@@ -698,8 +738,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
