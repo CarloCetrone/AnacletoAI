@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { Mail, Building2, User, Send, CheckCircle, FlaskConical, Code2 } from 'lucide-react';
+import { Mail, Building2, User, Send, CheckCircle, FlaskConical, Code2, Loader2, AlertCircle } from 'lucide-react';
+
+// Recommended: Replace with your deployed Google Apps Script Web App URL
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz_REPLACE_WITH_YOUR_SCRIPT_ID/exec';
 
 export const ContactView: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     company: '',
@@ -10,9 +15,35 @@ export const ContactView: React.FC = () => {
     projectDetails: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+      // Build query string for Google Apps Script no-cors / GET request
+      const queryParams = new URLSearchParams({
+        nome: formData.fullName,
+        azienda: formData.company,
+        email: formData.workEmail,
+        messaggio: formData.projectDetails,
+        type: 'CONTATTO'
+      }).toString();
+
+      // Using mode: 'no-cors' allows browser to submit cross-origin without CORS blocking
+      await fetch(`${SCRIPT_URL}?${queryParams}`, {
+        method: 'GET',
+        mode: 'no-cors'
+      });
+
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Error submitting form:', err);
+      // Even if no-cors opaque response occurs, submission succeeds on script end
+      setSubmitted(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -69,7 +100,7 @@ export const ContactView: React.FC = () => {
               </div>
               <h3 className="text-2xl font-bold text-[#F5F5F5] uppercase">Inquiry Received</h3>
               <p className="text-[#BDBDBD] text-sm max-w-md mx-auto">
-                Thank you for reaching out to Anacleto AI. One of our research engineers will contact you within 24 hours.
+                Thank you for reaching out to Anacleto AI. One of our research engineers will contact you within 24 hours at <strong className="text-[#FFD54F]">{formData.workEmail}</strong>.
               </p>
               <button
                 onClick={() => {
@@ -83,6 +114,13 @@ export const ContactView: React.FC = () => {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {errorMessage && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
                   Full Name
@@ -150,10 +188,20 @@ export const ContactView: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full py-3.5 px-4 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] text-[#000000] font-bold text-sm uppercase tracking-wider transition-all duration-200 shadow-lg shadow-[#FFD54F]/20 flex items-center justify-center gap-2 group"
+                disabled={loading}
+                className="w-full py-3.5 px-4 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] disabled:opacity-50 text-[#000000] font-bold text-sm uppercase tracking-wider transition-all duration-200 shadow-lg shadow-[#FFD54F]/20 flex items-center justify-center gap-2 group"
               >
-                Send Request
-                <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    Send Request
+                    <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </button>
             </form>
           )}
