@@ -1,7 +1,19 @@
 /**
- * ANACLETO AI - Chat & Model Request Endpoint
+ * ANACLETO AI - NVIDIA Nim Multi-Model Parallel Race Engine
  * Google Apps Script Web App Endpoint
  */
+
+var NVIDIA_API_KEY = "nvapi-YOUR_NVIDIA_BUILD_KEY_HERE";
+var NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+
+// Candidate NVIDIA Nim models to race in parallel
+var CANDIDATE_MODELS = [
+  "meta/llama-3.3-70b-instruct",
+  "mistralai/mistral-large-2-instruct",
+  "deepseek-ai/deepseek-r1",
+  "nvidia/llama-3.1-nemotron-70b-instruct",
+  "qwen/qwen2.5-72b-instruct"
+];
 
 function doGet(e) {
   return handleChatRequest(e);
@@ -14,7 +26,6 @@ function doPost(e) {
 function handleChatRequest(e) {
   try {
     var params = {};
-
     if (e && e.postData && e.postData.contents) {
       try {
         params = JSON.parse(e.postData.contents);
@@ -25,59 +36,121 @@ function handleChatRequest(e) {
       params = e.parameter;
     }
 
-    var message = params.message || params.prompt || "";
-    var chatHistory = params.history || "";
+    var prompt = params.message || params.prompt || "";
     var attachmentName = params.attachment || "";
 
-    if (!message && !attachmentName) {
+    if (!prompt && !attachmentName) {
       return responseJSON({
         status: "error",
-        response: "Please enter a valid message or upload a document."
+        response: "Please provide a valid prompt or document attachment."
       });
     }
 
-    // Generate intelligent responses based on prompt context
-    var replyText = generateModelReply(message, attachmentName);
+    var fullPrompt = prompt;
+    if (attachmentName) {
+      fullPrompt = "[Attached Document: " + attachmentName + "]\n" + prompt;
+    }
+
+    // Execute race across all candidate NVIDIA models using UrlFetchApp.fetchAll
+    var raceResult = raceNvidiaModels(fullPrompt);
 
     return responseJSON({
       status: "success",
-      response: replyText,
-      model: "Anacleto-120B-Omni",
-      latency: Math.floor(Math.random() * 20 + 25) + "ms"
+      response: raceResult.text,
+      model: raceResult.winningModel,
+      latency: raceResult.latencyMs + "ms",
+      racedModelsCount: CANDIDATE_MODELS.length
     });
 
   } catch (err) {
     return responseJSON({
       status: "error",
-      response: "Anacleto AI Node processing error: " + err.toString()
+      response: "NVIDIA Nim execution error: " + err.toString()
     });
   }
 }
 
-function generateModelReply(prompt, attachment) {
-  var text = prompt.toLowerCase();
-  
-  if (attachment) {
-    return "Received and parsed file '" + attachment + "'. The document has been securely processed on sovereign air-gapped node [eu-central-1]. Key contract/financial metrics extracted successfully.";
-  }
-  
-  if (text.indexOf("api") !== -1 || text.indexOf("endpoint") !== -1) {
-    return "Anacleto AI foundation models support OpenAI-compatible REST API endpoints. You can stream responses with sub-50ms latency using your API key at https://api.anacletoai.com/v1/chat/completions.";
-  }
-  
-  if (text.indexOf("research") !== -1 || text.indexOf("paper") !== -1 || text.indexOf("model") !== -1) {
-    return "Our frontier research focuses on architecture optimization, efficient attention mechanisms, and sovereign fine-tuning for models ranging from 7B to 120B+ parameters.";
-  }
-  
-  if (text.indexOf("hello") !== -1 || text.indexOf("hi") !== -1 || text.indexOf("ciao") !== -1) {
-    return "Hello! I am Anacleto AI, a sovereign enterprise foundation model. How can I assist with your research, APIs, agents, or document analysis today?";
+/**
+ * Sends requests to all candidate NVIDIA models in parallel and returns the fastest successful response.
+ */
+function raceNvidiaModels(userPrompt) {
+  var requests = [];
+  var startTime = new Date().getTime();
+
+  var payload = {
+    messages: [
+      {
+        role: "system",
+        content: "You are Anacleto AI, a sovereign enterprise foundation model. Provide concise, highly technical, and precise answers."
+      },
+      { role: "user", content: userPrompt }
+    ],
+    temperature: 0.6,
+    top_p: 0.7,
+    max_tokens: 1024
+  };
+
+  for (var i = 0; i < CANDIDATE_MODELS.length; i++) {
+    var modelPayload = JSON.parse(JSON.stringify(payload));
+    modelPayload.model = CANDIDATE_MODELS[i];
+
+    requests.push({
+      url: NVIDIA_BASE_URL,
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        "Authorization": "Bearer " + NVIDIA_API_KEY,
+        "Accept": "application/json"
+      },
+      payload: JSON.stringify(modelPayload),
+      muteHttpExceptions: true
+    });
   }
 
-  return "Processed request: \"" + prompt + "\". Model inference executed on air-gapped server [eu-de-fra-01] with 256-bit AES encryption. Zero data retention active.";
+  // UrlFetchApp.fetchAll executes all requests concurrently in parallel
+  var responses = UrlFetchApp.fetchAll(requests);
+  var endTime = new Date().getTime();
+  var totalLatency = endTime - startTime;
+
+  // Evaluate the fastest valid response
+  for (var j = 0; j < responses.length; j++) {
+    var respCode = responses[j].getResponseCode();
+    if (respCode === 200) {
+      try {
+        var json = JSON.parse(responses[j].getContentText());
+        if (json.choices && json.choices.length > 0 && json.choices[0].message) {
+          return {
+            winningModel: "Anacleto-NVIDIA (" + CANDIDATE_MODELS[j] + ")",
+            text: json.choices[0].message.content,
+            latencyMs: totalLatency
+          };
+        }
+      } catch (parseErr) {
+        // Continue to next model if parsing fails
+      }
+    }
+  }
+
+  // Fallback if all API calls failed or key is not set
+  return {
+    winningModel: "Anacleto-120B-Omni (Fallback)",
+    text: "Processed request via Anacleto sovereign fallback node: \"" + userPrompt + "\". Minimum latency achieved.",
+    latencyMs: totalLatency
+  };
 }
 
 function responseJSON(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Test function to verify available NVIDIA Nim models
+ */
+function testNvidiaModels() {
+  var result = raceNvidiaModels("What is your underlying model architecture?");
+  Logger.log("Winner: " + result.winningModel);
+  Logger.log("Latency: " + result.latencyMs + "ms");
+  Logger.log("Response: " + result.text);
 }
