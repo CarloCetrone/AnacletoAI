@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Building2, User, Send, CheckCircle, FlaskConical, Code2, Loader2, AlertCircle } from 'lucide-react';
 
-// Recommended: Replace with your deployed Google Apps Script Web App URL
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz_REPLACE_WITH_YOUR_SCRIPT_ID/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxetkV6yhb38N77gpku0-9t8ay9Vwz4mm4LDyvOmNvhB-2FWuzRk9QreHtLttfilzRUrQ/exec';
 
 export const ContactView: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
