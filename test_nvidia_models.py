@@ -4,24 +4,25 @@ import time
 
 api_key = "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"
 
-models_to_test = [
-    "nvidia/llama-3.1-nemotron-70b-instruct",
-    "meta/llama-3.2-3b-instruct",
-    "meta/llama-3.2-1b-instruct",
-    "mistralai/mistral-large-2407",
-    "qwen/qwen2.5-72b-instruct",
-    "deepseek-ai/deepseek-r1-distill-llama-70b",
-    "google/gemma-2-27b-it"
+# Testing GLM 5.2, MiniMax M3, OpenAI 120B, DeepSeek Flash, and Llama 3.1 70B
+target_models = [
+    "z-ai/glm-5.2",
+    "minimaxai/minimax-m3",
+    "openai/gpt-oss-120b",
+    "deepseek-ai/deepseek-v4-flash",
+    "meta/llama-3.1-70b-instruct",
+    "mistralai/mistral-large-2-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct"
 ]
 
-print("--- Round 2: Testing Additional NVIDIA Nim Endpoints ---")
+print("--- Testing GLM 5.2, MiniMax M3, OpenAI GPT 120B & NVIDIA Models ---")
 working_models = []
 
-for model in models_to_test:
+for model in target_models:
     req_data = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 10,
+        "max_tokens": 15,
         "temperature": 0.5
     }).encode("utf-8")
 
@@ -41,10 +42,10 @@ for model in models_to_test:
             res_body = json.loads(response.read().decode("utf-8"))
             reply = res_body["choices"][0]["message"]["content"].strip()
             print(f"[OK] {latency}ms -> {model}")
-            working_models.append((model, latency))
+            working_models.append((model, latency, reply))
     except Exception as e:
         print(f"[FAIL] {model} -> {e}")
 
-print("\n--- Additional Working Models ---")
-for m, l in sorted(working_models, key=lambda x: x[1]):
-    print(f"'{m}' (Latency: {l}ms)")
+print("\n--- Verified Working Models Summary ---")
+for m, l, r in sorted(working_models, key=lambda x: x[1]):
+    print(f"Model: '{m}' | Latency: {l}ms | Sample: {r[:50]}")

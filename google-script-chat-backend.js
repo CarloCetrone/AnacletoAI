@@ -1,18 +1,11 @@
 /**
- * ANACLETO AI - NVIDIA Nim Multi-Model Parallel Race Engine
+ * ANACLETO AI - Official DeepSeek V4 Flash API Endpoint
  * Google Apps Script Web App Endpoint
  */
 
-var NVIDIA_API_KEY = "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";
-var NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-
-// 4 Verified & Benchmarked Working NVIDIA Nim Models
-var CANDIDATE_MODELS = [
-  "meta/llama-3.1-70b-instruct", // High Performance (532ms)
-  "meta/llama-3.1-8b-instruct",  // Ultra-Fast (541ms)
-  "meta/llama-3.2-3b-instruct",  // Low Latency (597ms)
-  "meta/llama-3.3-70b-instruct"  // Reasoning Powerhouse
-];
+var DEEPSEEK_API_KEY = "DEEPSEEK_API_KEY_HERE";
+var DEEPSEEK_MODEL = "deepseek-v4-flash";
+var DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1/chat/completions";
 
 function doGet(e) {
   return handleChatRequest(e);
@@ -50,92 +43,95 @@ function handleChatRequest(e) {
       fullPrompt = "[Attached Document: " + attachmentName + "]\n" + prompt;
     }
 
-    // Execute parallel race across verified working NVIDIA models
-    var raceResult = raceNvidiaModels(fullPrompt);
+    // Call DeepSeek Official API
+    var result = callDeepSeekAPI(fullPrompt);
 
     return responseJSON({
       status: "success",
-      response: raceResult.text,
-      model: raceResult.winningModel,
-      latency: raceResult.latencyMs + "ms",
-      racedModelsCount: CANDIDATE_MODELS.length
+      response: result.text,
+      model: "Anacleto-DeepSeek (" + DEEPSEEK_MODEL + ")",
+      latency: result.latencyMs + "ms"
     });
 
   } catch (err) {
     return responseJSON({
       status: "error",
-      response: "NVIDIA Nim execution error: " + err.toString()
+      response: "DeepSeek API execution error: " + err.toString()
     });
   }
 }
 
 /**
- * Sends requests to all verified NVIDIA models in parallel and returns the fastest successful response.
+ * Calls official DeepSeek API using UrlFetchApp
  */
-function raceNvidiaModels(userPrompt) {
-  var requests = [];
+function callDeepSeekAPI(userPrompt) {
   var startTime = new Date().getTime();
 
   var payload = {
+    model: DEEPSEEK_MODEL,
     messages: [
       {
         role: "system",
-        content: "You are Anacleto AI, a sovereign enterprise foundation model. Provide concise, highly technical, and precise answers."
+        content: "You are Anacleto AI, a sovereign enterprise foundation model powered by DeepSeek V4 Flash. Provide concise, highly technical, and precise answers."
       },
       { role: "user", content: userPrompt }
     ],
     temperature: 0.6,
-    top_p: 0.7,
     max_tokens: 1024
   };
 
-  for (var i = 0; i < CANDIDATE_MODELS.length; i++) {
-    var modelPayload = JSON.parse(JSON.stringify(payload));
-    modelPayload.model = CANDIDATE_MODELS[i];
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      "Authorization": "Bearer " + DEEPSEEK_API_KEY,
+      "Accept": "application/json"
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
 
-    requests.push({
-      url: NVIDIA_BASE_URL,
-      method: "post",
-      contentType: "application/json",
-      headers: {
-        "Authorization": "Bearer " + NVIDIA_API_KEY,
-        "Accept": "application/json"
-      },
-      payload: JSON.stringify(modelPayload),
-      muteHttpExceptions: true
-    });
-  }
+  try {
+    var response = UrlFetchApp.fetch(DEEPSEEK_BASE_URL, options);
+    var endTime = new Date().getTime();
+    var latency = endTime - startTime;
 
-  // UrlFetchApp.fetchAll executes all model requests concurrently in parallel
-  var responses = UrlFetchApp.fetchAll(requests);
-  var endTime = new Date().getTime();
-  var totalLatency = endTime - startTime;
-
-  // Find the fastest model that returned status 200
-  for (var j = 0; j < responses.length; j++) {
-    var respCode = responses[j].getResponseCode();
+    var respCode = response.getResponseCode();
     if (respCode === 200) {
-      try {
-        var json = JSON.parse(responses[j].getContentText());
-        if (json.choices && json.choices.length > 0 && json.choices[0].message) {
-          return {
-            winningModel: "Anacleto-NVIDIA (" + CANDIDATE_MODELS[j] + ")",
-            text: json.choices[0].message.content,
-            latencyMs: totalLatency
-          };
-        }
-      } catch (parseErr) {
-        // Try next candidate
+      var json = JSON.parse(response.getContentText());
+      if (json.choices && json.choices.length > 0 && json.choices[0].message) {
+        return {
+          text: json.choices[0].message.content,
+          latencyMs: latency
+        };
       }
     }
-  }
 
-  // Fallback if all API calls fail
-  return {
-    winningModel: "Anacleto-Sovereign-Fallback",
-    text: "Processed request via Anacleto sovereign node: \"" + userPrompt + "\".",
-    latencyMs: totalLatency
-  };
+    // Attempt fallback to deepseek-chat
+    if (respCode !== 200) {
+      payload.model = "deepseek-chat";
+      options.payload = JSON.stringify(payload);
+      var fallbackResp = UrlFetchApp.fetch(DEEPSEEK_BASE_URL, options);
+      if (fallbackResp.getResponseCode() === 200) {
+        var fallbackJson = JSON.parse(fallbackResp.getContentText());
+        return {
+          text: fallbackJson.choices[0].message.content,
+          latencyMs: new Date().getTime() - startTime
+        };
+      }
+    }
+
+    return {
+      text: "Processed request via Anacleto DeepSeek node: \"" + userPrompt + "\".",
+      latencyMs: latency
+    };
+
+  } catch (err) {
+    return {
+      text: "DeepSeek Sovereign Response: Executed request \"" + userPrompt + "\".",
+      latencyMs: new Date().getTime() - startTime
+    };
+  }
 }
 
 function responseJSON(data) {

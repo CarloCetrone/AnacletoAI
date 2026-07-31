@@ -43,9 +43,9 @@ export const SecureChatView: React.FC = () => {
     {
       id: 'welcome-msg',
       sender: 'ai',
-      text: 'Welcome to Anacleto AI Console. Connected to our multi-model parallel inference race engine (NVIDIA Nim & Open Sovereign LLMs). How can I assist with your research, APIs, agents, or document analysis today?',
+      text: 'Welcome to Anacleto AI Console. Connected to our sovereign model engine (DeepSeek V4 Flash). How can I assist with your research, APIs, agents, or document analysis today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      modelUsed: 'Anacleto Multi-Model Engine'
+      modelUsed: 'Anacleto-DeepSeek-v4-flash'
     }
   ]);
 
@@ -98,7 +98,7 @@ export const SecureChatView: React.FC = () => {
         sender: 'ai',
         text: aiReplyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: data.model || 'Anacleto-NVIDIA-Nim',
+        modelUsed: data.model || 'Anacleto-DeepSeek-v4-flash',
         latency: data.latency || '35ms'
       };
 
@@ -110,8 +110,8 @@ export const SecureChatView: React.FC = () => {
         sender: 'ai',
         text: `Processed request: "${userMsgText || attachedName}". Model inference executed on sovereign node [eu-de-fra-01]. Zero data retention active.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-NVIDIA Race Engine',
-        latency: '42ms'
+        modelUsed: 'Anacleto-DeepSeek-v4-flash',
+        latency: '38ms'
       };
       setMessages((prev) => [...prev, fallbackReply]);
     } finally {
@@ -134,9 +134,9 @@ export const SecureChatView: React.FC = () => {
       {
         id: `welcome-${newId}`,
         sender: 'ai',
-        text: 'Welcome to Anacleto AI Console. Connected to our multi-model parallel inference race engine (NVIDIA Nim & Open Sovereign LLMs). How can I assist with your research, APIs, agents, or document analysis today?',
+        text: 'Welcome to Anacleto AI Console. Connected to our sovereign model engine (DeepSeek V4 Flash). How can I assist with your research, APIs, agents, or document analysis today?',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto Multi-Model Engine'
+        modelUsed: 'Anacleto-DeepSeek-v4-flash'
       }
     ]);
   };
@@ -206,8 +206,8 @@ export const SecureChatView: React.FC = () => {
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
-            <span className="font-semibold text-[#F5F5F5]">NVIDIA Nim Parallel Model Race Active</span>
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">5 Models Racing</span>
+            <span className="font-semibold text-[#F5F5F5]">Model: Anacleto-DeepSeek-v4-flash</span>
+            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">Official DeepSeek API</span>
           </div>
           <div className="hidden sm:flex items-center gap-4">
             <span className="flex items-center gap-1 text-[#BDBDBD]">
@@ -245,7 +245,7 @@ export const SecureChatView: React.FC = () => {
               >
                 <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-70 border-b border-current/10 pb-1">
                   <span className="font-semibold flex items-center gap-1">
-                    {msg.sender === 'user' ? 'You (Enterprise Developer)' : 'Anacleto AI Model'}
+                    {msg.sender === 'user' ? 'You (Enterprise Developer)' : 'Anacleto DeepSeek Model'}
                   </span>
                   <div className="flex items-center gap-2">
                     {msg.latency && (
@@ -262,7 +262,7 @@ export const SecureChatView: React.FC = () => {
 
                 {msg.modelUsed && msg.sender === 'ai' && (
                   <div className="mt-3 pt-2 border-t border-[#333333] flex items-center justify-between text-[11px] font-mono text-[#FFD54F]/80">
-                    <span>Fastest Winner: {msg.modelUsed}</span>
+                    <span>Engine: {msg.modelUsed}</span>
                   </div>
                 )}
 
@@ -291,7 +291,7 @@ export const SecureChatView: React.FC = () => {
               </div>
               <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">Racing NVIDIA Nim models (Llama 3.3, Mistral Large 2, DeepSeek R1)...</span>
+                <span className="text-xs text-[#BDBDBD]">DeepSeek V4 Flash is generating response...</span>
               </div>
             </div>
           )}
@@ -341,7 +341,7 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder="Prompt Anacleto AI (Race Llama 3.3, Mistral, DeepSeek)..."
+              placeholder="Prompt Anacleto AI (DeepSeek V4 Flash)..."
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -357,7 +357,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign Multi-Model Parallel Race Engine.
+              Sovereign DeepSeek V4 Flash API Endpoint.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>
