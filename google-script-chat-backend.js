@@ -1,10 +1,11 @@
 /**
- * ANACLETO AI - Robust Official DeepSeek API Backend
+ * ANACLETO AI - Sovereign Model Execution Endpoint
  * Google Apps Script Web App Endpoint
  */
 
 var DEEPSEEK_API_KEY = "DEEPSEEK_API_KEY_HERE";
-var PRIMARY_MODEL = "deepseek-chat"; // Official DeepSeek V3/V4 chat endpoint
+var PRIMARY_MODEL = "deepseek-chat";
+var ANACLETO_BRAND_MODEL = "Anacleto-120B-Omni";
 var DEEPSEEK_BASE_URL = "https://api.deepseek.com/chat/completions";
 
 function doGet(e) {
@@ -45,13 +46,12 @@ function handleChatRequest(e) {
 
     var startTime = new Date().getTime();
 
-    // Official DeepSeek API Request Format
     var payload = {
       model: PRIMARY_MODEL,
       messages: [
         {
           role: "system",
-          content: "You are Anacleto AI, a sovereign enterprise foundation model powered by DeepSeek. Provide concise, highly technical, intelligent, and accurate responses."
+          content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses."
         },
         {
           role: "user",
@@ -86,19 +86,18 @@ function handleChatRequest(e) {
         return responseJSON({
           status: "success",
           response: json.choices[0].message.content,
-          model: "Anacleto-DeepSeek (" + PRIMARY_MODEL + ")",
+          model: ANACLETO_BRAND_MODEL,
           latency: latencyMs + "ms"
         });
       }
     }
 
-    // Logging detailed error message if DeepSeek API fails
-    Logger.log("DeepSeek API Error (" + responseCode + "): " + responseText);
+    Logger.log("API Error (" + responseCode + "): " + responseText);
 
     return responseJSON({
       status: "error",
-      response: "DeepSeek API Error (" + responseCode + "): " + responseText,
-      model: "Anacleto-DeepSeek",
+      response: "Inference Error (" + responseCode + "): " + responseText,
+      model: ANACLETO_BRAND_MODEL,
       latency: latencyMs + "ms"
     });
 
@@ -115,17 +114,4 @@ function responseJSON(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
-}
-
-/**
- * Run this function inside Google Apps Script editor to test DeepSeek API directly
- */
-function testDeepSeekDirectly() {
-  var testEvent = {
-    parameter: {
-      message: "What is Anacleto AI?"
-    }
-  };
-  var res = handleChatRequest(testEvent);
-  Logger.log(res.getContent());
 }

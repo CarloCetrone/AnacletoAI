@@ -43,9 +43,9 @@ export const SecureChatView: React.FC = () => {
     {
       id: 'welcome-msg',
       sender: 'ai',
-      text: 'Welcome to Anacleto AI Console. Connected to our sovereign model engine (DeepSeek V4 Flash). How can I assist with your research, APIs, agents, or document analysis today?',
+      text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      modelUsed: 'Anacleto-DeepSeek-v4-flash'
+      modelUsed: 'Anacleto-120B-Omni'
     }
   ]);
 
@@ -98,7 +98,7 @@ export const SecureChatView: React.FC = () => {
         sender: 'ai',
         text: aiReplyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: data.model || 'Anacleto-DeepSeek-v4-flash',
+        modelUsed: data.model || 'Anacleto-120B-Omni',
         latency: data.latency || '35ms'
       };
 
@@ -110,7 +110,7 @@ export const SecureChatView: React.FC = () => {
         sender: 'ai',
         text: `Processed request: "${userMsgText || attachedName}". Model inference executed on sovereign node [eu-de-fra-01]. Zero data retention active.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-DeepSeek-v4-flash',
+        modelUsed: 'Anacleto-120B-Omni',
         latency: '38ms'
       };
       setMessages((prev) => [...prev, fallbackReply]);
@@ -134,9 +134,9 @@ export const SecureChatView: React.FC = () => {
       {
         id: `welcome-${newId}`,
         sender: 'ai',
-        text: 'Welcome to Anacleto AI Console. Connected to our sovereign model engine (DeepSeek V4 Flash). How can I assist with your research, APIs, agents, or document analysis today?',
+        text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-DeepSeek-v4-flash'
+        modelUsed: 'Anacleto-120B-Omni'
       }
     ]);
   };
@@ -206,8 +206,8 @@ export const SecureChatView: React.FC = () => {
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
-            <span className="font-semibold text-[#F5F5F5]">Model: Anacleto-DeepSeek-v4-flash</span>
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">Official DeepSeek API</span>
+            <span className="font-semibold text-[#F5F5F5]">Model: Anacleto-120B-Omni</span>
+            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">v3.4-EU Sovereign</span>
           </div>
           <div className="hidden sm:flex items-center gap-4">
             <span className="flex items-center gap-1 text-[#BDBDBD]">
@@ -245,7 +245,7 @@ export const SecureChatView: React.FC = () => {
               >
                 <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-70 border-b border-current/10 pb-1">
                   <span className="font-semibold flex items-center gap-1">
-                    {msg.sender === 'user' ? 'You (Enterprise Developer)' : 'Anacleto DeepSeek Model'}
+                    {msg.sender === 'user' ? 'You (Enterprise Developer)' : 'Anacleto AI Model'}
                   </span>
                   <div className="flex items-center gap-2">
                     {msg.latency && (
@@ -291,7 +291,7 @@ export const SecureChatView: React.FC = () => {
               </div>
               <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">DeepSeek V4 Flash is generating response...</span>
+                <span className="text-xs text-[#BDBDBD]">Anacleto-120B-Omni is thinking...</span>
               </div>
             </div>
           )}
@@ -341,7 +341,7 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder="Prompt Anacleto AI (DeepSeek V4 Flash)..."
+              placeholder="Prompt Anacleto AI (Anacleto-120B-Omni)..."
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -357,7 +357,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign DeepSeek V4 Flash API Endpoint.
+              Sovereign AI Research Engine. Zero telemetry.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>
