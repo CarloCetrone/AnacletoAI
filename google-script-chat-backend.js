@@ -1,5 +1,5 @@
 /**
- * ANACLETO AI - Sovereign Model Execution Endpoint
+ * ANACLETO AI - Sovereign Session & Multi-Turn Chat Backend
  * Google Apps Script Web App Endpoint
  */
 
@@ -19,6 +19,7 @@ function doPost(e) {
 function handleChatRequest(e) {
   try {
     var params = {};
+
     if (e && e.postData && e.postData.contents) {
       try {
         params = JSON.parse(e.postData.contents);
@@ -31,8 +32,18 @@ function handleChatRequest(e) {
 
     var prompt = params.message || params.prompt || "";
     var attachmentName = params.attachment || "";
+    var conversationHistory = [];
 
-    if (!prompt && !attachmentName) {
+    // Parse full conversation history sent from frontend for multi-turn follow up
+    if (params.history) {
+      try {
+        conversationHistory = typeof params.history === "string" ? JSON.parse(params.history) : params.history;
+      } catch (hErr) {
+        conversationHistory = [];
+      }
+    }
+
+    if (!prompt && !attachmentName && conversationHistory.length === 0) {
       return responseJSON({
         status: "error",
         response: "Please enter a valid message."
@@ -46,18 +57,32 @@ function handleChatRequest(e) {
 
     var startTime = new Date().getTime();
 
+    // Construct multi-turn messages array with full context memory
+    var apiMessages = [
+      {
+        role: "system",
+        content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses. Maintain context across user follow-up questions."
+      }
+    ];
+
+    // Append prior message history for this active chat session
+    for (var i = 0; i < conversationHistory.length; i++) {
+      var item = conversationHistory[i];
+      if (item.sender === "user") {
+        apiMessages.push({ role: "user", content: item.text });
+      } else if (item.sender === "ai" && item.id !== "welcome-msg") {
+        apiMessages.push({ role: "assistant", content: item.text });
+      }
+    }
+
+    // Append current user message if not already included
+    if (userContent && (apiMessages.length === 1 || apiMessages[apiMessages.length - 1].content !== userContent)) {
+      apiMessages.push({ role: "user", content: userContent });
+    }
+
     var payload = {
       model: PRIMARY_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses."
-        },
-        {
-          role: "user",
-          content: userContent
-        }
-      ],
+      messages: apiMessages,
       stream: false,
       temperature: 0.7,
       max_tokens: 2048

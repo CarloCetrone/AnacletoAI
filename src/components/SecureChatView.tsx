@@ -29,30 +29,57 @@ interface ChatMessage {
   isError?: boolean;
 }
 
-export const SecureChatView: React.FC = () => {
-  const [chatHistory, setChatHistory] = useState([
-    { id: '1', title: 'Legal Contract Analysis', active: true },
-    { id: '2', title: 'Q3 Financial Report Summary', active: false },
-    { id: '3', title: 'Autonomous Agent Code Review', active: false },
-    { id: '4', title: 'Research Paper Synthesis', active: false },
-  ]);
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+}
 
-  const [activeChatId, setActiveChatId] = useState('1');
-  const [inputMessage, setInputMessage] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
+export const SecureChatView: React.FC = () => {
+  // Initial state for isolated chat sessions
+  const [sessions, setSessions] = useState<ChatSession[]>([
     {
-      id: 'welcome-msg',
-      sender: 'ai',
-      text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      modelUsed: 'Anacleto-120B-Omni'
+      id: 'session-1',
+      title: 'Legal Contract Analysis',
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [
+        {
+          id: 'welcome-msg',
+          sender: 'ai',
+          text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed: 'Anacleto-120B-Omni'
+        }
+      ]
+    },
+    {
+      id: 'session-2',
+      title: 'Q3 Financial Report Summary',
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [
+        {
+          id: 'welcome-msg-2',
+          sender: 'ai',
+          text: 'Session connected for Q3 Financial Analysis. Send your prompt or upload financial spreadsheets.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed: 'Anacleto-120B-Omni'
+        }
+      ]
     }
   ]);
 
+  const [activeSessionId, setActiveSessionId] = useState<string>('session-1');
+  const [inputMessage, setInputMessage] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Get active session data
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession.messages;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,12 +87,13 @@ export const SecureChatView: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading]);
+  }, [activeSessionId, messages, loading]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputMessage.trim() && !selectedFile) || loading) return;
 
+    const currentSessionId = activeSessionId;
     const userMsgText = inputMessage;
     const attachedName = selectedFile ? selectedFile.name : undefined;
 
@@ -77,15 +105,41 @@ export const SecureChatView: React.FC = () => {
       attachments: attachedName ? [attachedName] : undefined
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Update active session messages locally
+    setSessions((prevSessions) =>
+      prevSessions.map((sess) => {
+        if (sess.id === currentSessionId) {
+          // Dynamically set title from first user message if it's still default
+          const newTitle = sess.messages.length <= 1 && userMsgText 
+            ? userMsgText.slice(0, 24) + (userMsgText.length > 24 ? '...' : '') 
+            : sess.title;
+
+          return {
+            ...sess,
+            title: newTitle,
+            messages: [...sess.messages, userMessage]
+          };
+        }
+        return sess;
+      })
+    );
+
     setInputMessage('');
     setSelectedFile(null);
     setLoading(true);
 
     try {
+      // Pass the complete session message history to backend for follow-up context
+      const historyContext = activeSession.messages.map((m) => ({
+        sender: m.sender,
+        text: m.text,
+        id: m.id
+      }));
+
       const queryParams = new URLSearchParams({
         message: userMsgText,
-        attachment: attachedName || ''
+        attachment: attachedName || '',
+        history: JSON.stringify(historyContext)
       }).toString();
 
       const response = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
@@ -97,10 +151,10 @@ export const SecureChatView: React.FC = () => {
       if (data && data.status === 'success' && data.response) {
         aiReplyText = data.response;
       } else if (data && data.response) {
-        aiReplyText = `API Exception: ${data.response}`;
+        aiReplyText = `API Error: ${data.response}`;
         isErr = true;
       } else {
-        aiReplyText = 'No response received from Anacleto AI model. Please verify backend execution deployment.';
+        aiReplyText = 'No response received from model endpoint.';
         isErr = true;
       }
 
@@ -114,19 +168,41 @@ export const SecureChatView: React.FC = () => {
         isError: isErr
       };
 
-      setMessages((prev) => [...prev, aiResponseMsg]);
+      // Append AI response strictly to the session where the prompt originated
+      setSessions((prevSessions) =>
+        prevSessions.map((sess) => {
+          if (sess.id === currentSessionId) {
+            return {
+              ...sess,
+              messages: [...sess.messages, aiResponseMsg]
+            };
+          }
+          return sess;
+        })
+      );
     } catch (err) {
       console.error('Chat API Error:', err);
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: `Network Error: Unable to connect to Google Apps Script Web App. (Details: ${err})`,
+        text: `Network Error: Unable to connect to backend endpoint. (Details: ${err})`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         modelUsed: 'Anacleto-120B-Omni',
         latency: '0ms',
         isError: true
       };
-      setMessages((prev) => [...prev, errorMsg]);
+
+      setSessions((prevSessions) =>
+        prevSessions.map((sess) => {
+          if (sess.id === currentSessionId) {
+            return {
+              ...sess,
+              messages: [...sess.messages, errorMsg]
+            };
+          }
+          return sess;
+        })
+      );
     } finally {
       setLoading(false);
     }
@@ -138,65 +214,69 @@ export const SecureChatView: React.FC = () => {
     }
   };
 
+  // Create a completely new, isolated session
   const handleNewChat = () => {
-    const newId = Date.now().toString();
-    const newChat = { id: newId, title: 'New Model Session', active: true };
-    setChatHistory((prev) => [newChat, ...prev.map((c) => ({ ...c, active: false }))]);
-    setActiveChatId(newId);
-    setMessages([
-      {
-        id: `welcome-${newId}`,
-        sender: 'ai',
-        text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-120B-Omni'
-      }
-    ]);
+    const newSessionId = `session-${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: 'New Session',
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      messages: [
+        {
+          id: `welcome-${newSessionId}`,
+          sender: 'ai',
+          text: 'Welcome to a new Anacleto AI Session. Connected to Anacleto-120B-Omni with fresh memory context.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed: 'Anacleto-120B-Omni'
+        }
+      ]
+    };
+
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSessionId);
   };
 
   return (
     <div className="pt-16 h-[calc(100vh-64px)] flex overflow-hidden bg-[#121212] text-[#F5F5F5]">
       
-      {/* LEFT SIDEBAR - CHAT HISTORY */}
+      {/* LEFT SIDEBAR - SESSIONS LIST */}
       <aside className="w-64 sm:w-72 bg-[#1A1A1A] border-r border-[#333333] flex flex-col justify-between flex-shrink-0 hidden md:flex">
         <div className="p-4 space-y-4">
           
           {/* New Chat Button */}
           <button
             onClick={handleNewChat}
-            className="w-full py-2.5 px-4 rounded-lg bg-transparent border border-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] text-[#FFD54F] font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group"
+            className="w-full py-2.5 px-4 rounded-lg bg-transparent border border-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] text-[#FFD54F] font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group shadow-md shadow-[#FFD54F]/10"
           >
             <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
             New Session
           </button>
 
-          {/* History List */}
+          {/* Sessions List */}
           <div className="space-y-1">
             <div className="px-3 py-1 text-[11px] font-bold text-[#BDBDBD] uppercase tracking-wider">
-              Model History
+              Active Sessions
             </div>
-            {chatHistory.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  setActiveChatId(item.id);
-                  setChatHistory((prev) =>
-                    prev.map((c) => ({ ...c, active: c.id === item.id }))
-                  );
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                  item.active
-                    ? 'bg-[#252525] text-[#FFD54F] border-l-2 border-[#FFD54F]'
-                    : 'text-[#BDBDBD] hover:bg-[#252525]/50 hover:text-[#F5F5F5]'
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <MessageSquare className="w-3.5 h-3.5 text-[#FFD54F] flex-shrink-0" />
-                  <span className="truncate">{item.title}</span>
+            {sessions.map((sess) => {
+              const isActive = sess.id === activeSessionId;
+              return (
+                <div
+                  key={sess.id}
+                  onClick={() => setActiveSessionId(sess.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                    isActive
+                      ? 'bg-[#252525] text-[#FFD54F] border-l-2 border-[#FFD54F]'
+                      : 'text-[#BDBDBD] hover:bg-[#252525]/50 hover:text-[#F5F5F5]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#FFD54F] flex-shrink-0" />
+                    <span className="truncate">{sess.title}</span>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 opacity-40" />
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 opacity-40" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -219,12 +299,12 @@ export const SecureChatView: React.FC = () => {
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
-            <span className="font-semibold text-[#F5F5F5]">Model: Anacleto-120B-Omni</span>
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">v3.4-EU Sovereign</span>
+            <span className="font-semibold text-[#F5F5F5]">Active Session: {activeSession.title}</span>
+            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">Anacleto-120B-Omni</span>
           </div>
           <div className="hidden sm:flex items-center gap-4">
             <span className="flex items-center gap-1 text-[#BDBDBD]">
-              <Code2 className="w-3 h-3 text-[#FFD54F]" /> REST API Ready
+              <Code2 className="w-3 h-3 text-[#FFD54F]" /> Multi-Turn Memory
             </span>
             <span className="flex items-center gap-1 text-[#BDBDBD]">
               <Lock className="w-3 h-3 text-[#FFD54F]" /> 256-bit AES
@@ -358,7 +438,7 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder="Prompt Anacleto AI (Anacleto-120B-Omni)..."
+              placeholder={`Message ${activeSession.title}...`}
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -374,7 +454,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign AI Research Engine. Zero telemetry.
+              Sovereign Session Memory Active.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>
