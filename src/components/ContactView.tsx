@@ -20,16 +20,13 @@ export const ContactView: React.FC = () => {
     setErrorMessage('');
 
     try {
-      // Build query string for Google Apps Script no-cors / GET request
       const queryParams = new URLSearchParams({
-        nome: formData.fullName,
-        azienda: formData.company,
-        email: formData.workEmail,
-        messaggio: formData.projectDetails,
-        type: 'CONTATTO'
+        fullName: formData.fullName,
+        company: formData.company,
+        workEmail: formData.workEmail,
+        projectDetails: formData.projectDetails
       }).toString();
 
-      // Using mode: 'no-cors' allows browser to submit cross-origin without CORS blocking
       await fetch(`${SCRIPT_URL}?${queryParams}`, {
         method: 'GET',
         mode: 'no-cors'
@@ -38,7 +35,6 @@ export const ContactView: React.FC = () => {
       setSubmitted(true);
     } catch (err) {
       console.error('Error submitting form:', err);
-      // Even if no-cors opaque response occurs, submission succeeds on script end
       setSubmitted(true);
     } finally {
       setLoading(false);

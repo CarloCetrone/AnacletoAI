@@ -1,5 +1,5 @@
 /**
- * ANACLETO AI - Enterprise Contact & Demo Request Handler
+ * ANACLETO AI - Enterprise Inquiry Handler
  * Google Apps Script Web App Endpoint
  */
 
@@ -12,9 +12,6 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
-  // Setup CORS Headers
-  var output = ContentService.createTextOutput();
-  
   try {
     var params = {};
 
@@ -29,57 +26,39 @@ function handleRequest(e) {
       params = e.parameter;
     }
 
-    var nome = params.nome || params.fullName || "Non specificato";
-    var emailUtente = params.email || params.workEmail || "";
-    var azienda = params.azienda || params.company || "";
-    var messaggio = params.messaggio || params.projectDetails || "";
-    var tipoRichiesta = params.type || (azienda ? "DEMO" : "CONTATTO");
+    var fullName = params.fullName || params.nome || "Unspecified";
+    var workEmail = params.workEmail || params.email || "";
+    var company = params.company || params.azienda || "N/A";
+    var projectDetails = params.projectDetails || params.messaggio || "N/A";
 
-    if (!emailUtente) {
-      return responseJSON({ status: "error", message: "Email obbligatoria" });
+    if (!workEmail) {
+      return responseJSON({ status: "error", message: "Work email is required." });
     }
 
-    var mioAlias = "info@anacletoai.com";
-    var destinatario = "info@anacletoai.com";
-    var oggettoEmail = "";
-    var corpoEmail = "";
+    var senderAlias = "info@anacletoai.com";
+    var recipientEmail = "info@anacletoai.com";
 
-    if (tipoRichiesta === "DEMO" || azienda) {
-      oggettoEmail = "🚀 [Anacleto AI Demo Request] " + (azienda ? azienda : nome);
-      corpoEmail = "Hai ricevuto una nuova richiesta DEMO dal sito web Anacleto AI!\n\n" +
-                   "═══════════════════════════════════════════\n" +
-                   "👤 Nome: " + nome + "\n" +
-                   "🏢 Azienda/Ente: " + (azienda || "N/D") + "\n" +
-                   "✉️ Email Lavoro: " + emailUtente + "\n" +
-                   "📝 Dettagli Progetto: " + messaggio + "\n" +
-                   "═══════════════════════════════════════════\n\n" +
-                   "--> Clicca su 'Rispondi' per rispondere direttamente a: " + emailUtente;
-    } else {
-      oggettoEmail = "📩 [Anacleto AI Contatto] Da " + nome;
-      corpoEmail = "Hai ricevuto un nuovo messaggio dal form CONTATTI!\n\n" +
-                   "═══════════════════════════════════════════\n" +
-                   "👤 Nome: " + nome + "\n" +
-                   "🏢 Azienda/Ente: " + (azienda || "N/D") + "\n" +
-                   "✉️ Email: " + emailUtente + "\n" +
-                   "💬 Messaggio: " + messaggio + "\n" +
-                   "═══════════════════════════════════════════\n\n" +
-                   "--> Clicca su 'Rispondi' per rispondere direttamente a: " + emailUtente;
-    }
+    var emailSubject = "[Anacleto AI Inquiry] " + company + " - " + fullName;
+    var emailBody = "New inquiry received from the website:\n\n" +
+                    "Full Name: " + fullName + "\n" +
+                    "Company: " + company + "\n" +
+                    "Work Email: " + workEmail + "\n" +
+                    "Project / Research Scope:\n" + projectDetails + "\n\n" +
+                    "Reply directly to this email to contact the user.";
 
-    // Attempt sending via alias, fallback to standard MailApp
     try {
-      GmailApp.sendEmail(destinatario, oggettoEmail, corpoEmail, {
-        from: mioAlias,
-        replyTo: emailUtente,
-        name: "Anacleto AI Enterprise Web"
+      GmailApp.sendEmail(recipientEmail, emailSubject, emailBody, {
+        from: senderAlias,
+        replyTo: workEmail,
+        name: "Anacleto AI Website"
       });
     } catch (err) {
-      MailApp.sendEmail(destinatario, oggettoEmail, corpoEmail, {
-        replyTo: emailUtente
+      MailApp.sendEmail(recipientEmail, emailSubject, emailBody, {
+        replyTo: workEmail
       });
     }
 
-    return responseJSON({ status: "success", message: "Email inviata con successo" });
+    return responseJSON({ status: "success", message: "Inquiry sent successfully." });
 
   } catch (globalErr) {
     return responseJSON({ status: "error", message: globalErr.toString() });
@@ -92,13 +71,13 @@ function responseJSON(data) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function controllaAlias() {
+function checkAlias() {
   var aliases = GmailApp.getAliases();
-  Logger.log("I tuoi alias registrati:");
+  Logger.log("Registered Aliases:");
   Logger.log(aliases);
   if (aliases.indexOf("info@anacletoai.com") !== -1) {
-    Logger.log("✅ L'alias 'info@anacletoai.com' è attivo!");
+    Logger.log("Alias info@anacletoai.com is active.");
   } else {
-    Logger.log("❌ L'alias 'info@anacletoai.com' non è configurato.");
+    Logger.log("Alias info@anacletoai.com not found.");
   }
 }
