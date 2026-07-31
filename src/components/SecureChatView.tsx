@@ -12,7 +12,8 @@ import {
   Code2,
   Lock,
   Loader2,
-  Zap
+  Zap,
+  AlertCircle
 } from 'lucide-react';
 
 const CHAT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwYqzFN2cMmMkP3ikWEuizC_W5sgTpUueqja0E8kpzAQ4wv_7ZBZn5eMM9fMNyl4S0/exec';
@@ -25,6 +26,7 @@ interface ChatMessage {
   attachments?: string[];
   modelUsed?: string;
   latency?: string;
+  isError?: boolean;
 }
 
 export const SecureChatView: React.FC = () => {
@@ -89,9 +91,18 @@ export const SecureChatView: React.FC = () => {
       const response = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
       const data = await response.json();
 
-      const aiReplyText = data && data.response 
-        ? data.response 
-        : `Processed request: "${userMsgText || attachedName}". Model inference executed on air-gapped server [eu-de-fra-01] with 256-bit AES encryption.`;
+      let aiReplyText = '';
+      let isErr = false;
+
+      if (data && data.status === 'success' && data.response) {
+        aiReplyText = data.response;
+      } else if (data && data.response) {
+        aiReplyText = `API Exception: ${data.response}`;
+        isErr = true;
+      } else {
+        aiReplyText = 'No response received from Anacleto AI model. Please verify backend execution deployment.';
+        isErr = true;
+      }
 
       const aiResponseMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -99,21 +110,23 @@ export const SecureChatView: React.FC = () => {
         text: aiReplyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         modelUsed: data.model || 'Anacleto-120B-Omni',
-        latency: data.latency || '35ms'
+        latency: data.latency || '0ms',
+        isError: isErr
       };
 
       setMessages((prev) => [...prev, aiResponseMsg]);
     } catch (err) {
       console.error('Chat API Error:', err);
-      const fallbackReply: ChatMessage = {
+      const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: `Processed request: "${userMsgText || attachedName}". Model inference executed on sovereign node [eu-de-fra-01]. Zero data retention active.`,
+        text: `Network Error: Unable to connect to Google Apps Script Web App. (Details: ${err})`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         modelUsed: 'Anacleto-120B-Omni',
-        latency: '38ms'
+        latency: '0ms',
+        isError: true
       };
-      setMessages((prev) => [...prev, fallbackReply]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
@@ -229,9 +242,11 @@ export const SecureChatView: React.FC = () => {
               }`}
             >
               {msg.sender === 'ai' && (
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#FFD54F] p-0.5 flex-shrink-0">
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl p-0.5 flex-shrink-0 ${
+                  msg.isError ? 'bg-red-500' : 'bg-[#FFD54F]'
+                }`}>
                   <div className="w-full h-full bg-[#121212] rounded-[10px] flex items-center justify-center text-[#FFD54F]">
-                    <Bot className="w-5 h-5" />
+                    {msg.isError ? <AlertCircle className="w-5 h-5 text-red-500" /> : <Bot className="w-5 h-5 text-[#FFD54F]" />}
                   </div>
                 </div>
               )}
@@ -240,6 +255,8 @@ export const SecureChatView: React.FC = () => {
                 className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-sm leading-relaxed ${
                   msg.sender === 'user'
                     ? 'bg-[#FFD54F] text-[#000000] font-semibold rounded-tr-none shadow-lg shadow-[#FFD54F]/10'
+                    : msg.isError
+                    ? 'bg-red-950/40 border border-red-800 text-red-200 rounded-tl-none'
                     : 'bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-tl-none shadow-md'
                 }`}
               >
