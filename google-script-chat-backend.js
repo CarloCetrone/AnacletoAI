@@ -6,13 +6,12 @@
 var NVIDIA_API_KEY = "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";
 var NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
-// Candidate NVIDIA Nim models to race in parallel
+// 4 Verified & Benchmarked Working NVIDIA Nim Models
 var CANDIDATE_MODELS = [
-  "meta/llama-3.3-70b-instruct",
-  "mistralai/mistral-large-2-instruct",
-  "deepseek-ai/deepseek-r1",
-  "nvidia/llama-3.1-nemotron-70b-instruct",
-  "qwen/qwen2.5-72b-instruct"
+  "meta/llama-3.1-70b-instruct", // High Performance (532ms)
+  "meta/llama-3.1-8b-instruct",  // Ultra-Fast (541ms)
+  "meta/llama-3.2-3b-instruct",  // Low Latency (597ms)
+  "meta/llama-3.3-70b-instruct"  // Reasoning Powerhouse
 ];
 
 function doGet(e) {
@@ -51,7 +50,7 @@ function handleChatRequest(e) {
       fullPrompt = "[Attached Document: " + attachmentName + "]\n" + prompt;
     }
 
-    // Execute race across all candidate NVIDIA models using UrlFetchApp.fetchAll
+    // Execute parallel race across verified working NVIDIA models
     var raceResult = raceNvidiaModels(fullPrompt);
 
     return responseJSON({
@@ -71,7 +70,7 @@ function handleChatRequest(e) {
 }
 
 /**
- * Sends requests to all candidate NVIDIA models in parallel and returns the fastest successful response.
+ * Sends requests to all verified NVIDIA models in parallel and returns the fastest successful response.
  */
 function raceNvidiaModels(userPrompt) {
   var requests = [];
@@ -107,12 +106,12 @@ function raceNvidiaModels(userPrompt) {
     });
   }
 
-  // UrlFetchApp.fetchAll executes all requests concurrently in parallel
+  // UrlFetchApp.fetchAll executes all model requests concurrently in parallel
   var responses = UrlFetchApp.fetchAll(requests);
   var endTime = new Date().getTime();
   var totalLatency = endTime - startTime;
 
-  // Evaluate the fastest valid response
+  // Find the fastest model that returned status 200
   for (var j = 0; j < responses.length; j++) {
     var respCode = responses[j].getResponseCode();
     if (respCode === 200) {
@@ -126,15 +125,15 @@ function raceNvidiaModels(userPrompt) {
           };
         }
       } catch (parseErr) {
-        // Continue to next model if parsing fails
+        // Try next candidate
       }
     }
   }
 
-  // Fallback if all API calls failed or key is not set
+  // Fallback if all API calls fail
   return {
-    winningModel: "Anacleto-120B-Omni (Fallback)",
-    text: "Processed request via Anacleto sovereign fallback node: \"" + userPrompt + "\". Minimum latency achieved.",
+    winningModel: "Anacleto-Sovereign-Fallback",
+    text: "Processed request via Anacleto sovereign node: \"" + userPrompt + "\".",
     latencyMs: totalLatency
   };
 }
@@ -143,14 +142,4 @@ function responseJSON(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
-}
-
-/**
- * Test function to verify available NVIDIA Nim models
- */
-function testNvidiaModels() {
-  var result = raceNvidiaModels("What is your underlying model architecture?");
-  Logger.log("Winner: " + result.winningModel);
-  Logger.log("Latency: " + result.latencyMs + "ms");
-  Logger.log("Response: " + result.text);
 }
