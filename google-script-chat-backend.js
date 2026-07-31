@@ -3,7 +3,7 @@
  * Google Apps Script Web App Endpoint
  */
 
-var NVIDIA_API_KEY = "nvapi-YOUR_NVIDIA_BUILD_KEY_HERE";
+var NVIDIA_API_KEY = "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";
 var NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
 // Candidate NVIDIA Nim models to race in parallel
