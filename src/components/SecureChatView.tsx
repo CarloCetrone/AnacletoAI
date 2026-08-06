@@ -15,7 +15,10 @@ import {
   Zap,
   AlertCircle
 } from 'lucide-react';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 
+const SUPABASE_FUNCTION_URL = 'https://zzlptwfqqnjhxtvmebqb.supabase.co/functions/v1/chat';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_8eu0QBwgFKoECWdlqf4DvQ_mtmVsixc';
 const CHAT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwYqzFN2cMmMkP3ikWEuizC_W5sgTpUueqja0E8kpzAQ4wv_7ZBZn5eMM9fMNyl4S0/exec';
 
 interface ChatMessage {
@@ -37,7 +40,8 @@ interface ChatSession {
 }
 
 export const SecureChatView: React.FC = () => {
-  // Initial state for isolated chat sessions
+  const isConfigured = isSupabaseConfigured();
+
   const [sessions, setSessions] = useState<ChatSession[]>([
     {
       id: 'session-1',
@@ -47,9 +51,9 @@ export const SecureChatView: React.FC = () => {
         {
           id: 'welcome-msg',
           sender: 'ai',
-          text: 'Welcome to Anacleto AI Console. Connected to our sovereign frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
+          text: 'Welcome to Anacleto AI Console. Connected to RunPod Serverless frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni'
+          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
         }
       ]
     },
@@ -63,7 +67,7 @@ export const SecureChatView: React.FC = () => {
           sender: 'ai',
           text: 'Session connected for Q3 Financial Analysis. Send your prompt or upload financial spreadsheets.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni'
+          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
         }
       ]
     }
@@ -77,7 +81,6 @@ export const SecureChatView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Get active session data
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession.messages;
 
@@ -105,11 +108,22 @@ export const SecureChatView: React.FC = () => {
       attachments: attachedName ? [attachedName] : undefined
     };
 
-    // Update active session messages locally
+    const aiMsgId = (Date.now() + 1).toString();
+    const startTime = Date.now();
+
+    // Create a single AI response message placeholder for real-time streaming
+    const aiPlaceholderMsg: ChatMessage = {
+      id: aiMsgId,
+      sender: 'ai',
+      text: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)',
+      latency: 'Streaming...'
+    };
+
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
         if (sess.id === currentSessionId) {
-          // Dynamically set title from first user message if it's still default
           const newTitle = sess.messages.length <= 1 && userMsgText 
             ? userMsgText.slice(0, 24) + (userMsgText.length > 24 ? '...' : '') 
             : sess.title;
@@ -117,7 +131,7 @@ export const SecureChatView: React.FC = () => {
           return {
             ...sess,
             title: newTitle,
-            messages: [...sess.messages, userMessage]
+            messages: [...sess.messages, userMessage, aiPlaceholderMsg]
           };
         }
         return sess;
@@ -129,75 +143,136 @@ export const SecureChatView: React.FC = () => {
     setLoading(true);
 
     try {
-      // Pass the complete session message history to backend for follow-up context
       const historyContext = activeSession.messages.map((m) => ({
         sender: m.sender,
         text: m.text,
         id: m.id
       }));
 
-      const queryParams = new URLSearchParams({
-        message: userMsgText,
-        attachment: attachedName || '',
-        history: JSON.stringify(historyContext)
-      }).toString();
+      // Stream directly from Supabase Edge Function
+      const response = await fetch(SUPABASE_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          message: userMsgText,
+          attachment: attachedName || '',
+          history: historyContext
+        }),
+      });
 
-      const response = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
-      const data = await response.json();
+      if (response.ok && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = '';
 
-      let aiReplyText = '';
-      let isErr = false;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-      if (data && data.status === 'success' && data.response) {
-        aiReplyText = data.response;
-      } else if (data && data.response) {
-        aiReplyText = `API Error: ${data.response}`;
-        isErr = true;
-      } else {
-        aiReplyText = 'No response received from model endpoint.';
-        isErr = true;
-      }
+          const chunkText = decoder.decode(value, { stream: true });
+          const lines = chunkText.split('\n');
 
-      const aiResponseMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: aiReplyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: data.model || 'Anacleto-120B-Omni',
-        latency: data.latency || '0ms',
-        isError: isErr
-      };
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.replace('data: ', '').trim();
+              if (dataStr === '[DONE]') {
+                break;
+              }
 
-      // Append AI response strictly to the session where the prompt originated
-      setSessions((prevSessions) =>
-        prevSessions.map((sess) => {
-          if (sess.id === currentSessionId) {
-            return {
-              ...sess,
-              messages: [...sess.messages, aiResponseMsg]
-            };
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.token) {
+                  accumulatedText += parsed.token;
+                  
+                  // Update single active AI message in state in real-time
+                  setSessions((prevSessions) =>
+                    prevSessions.map((sess) => {
+                      if (sess.id === currentSessionId) {
+                        return {
+                          ...sess,
+                          messages: sess.messages.map((m) =>
+                            m.id === aiMsgId ? { ...m, text: accumulatedText } : m
+                          )
+                        };
+                      }
+                      return sess;
+                    })
+                  );
+                }
+              } catch {
+                // Ignore parsing artifacts
+              }
+            }
           }
-          return sess;
-        })
-      );
-    } catch (err) {
-      console.error('Chat API Error:', err);
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: `Network Error: Unable to connect to backend endpoint. (Details: ${err})`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-120B-Omni',
-        latency: '0ms',
-        isError: true
-      };
+        }
 
+        const totalLatency = `${Date.now() - startTime}ms`;
+        setSessions((prevSessions) =>
+          prevSessions.map((sess) => {
+            if (sess.id === currentSessionId) {
+              return {
+                ...sess,
+                messages: sess.messages.map((m) =>
+                  m.id === aiMsgId ? { ...m, latency: totalLatency } : m
+                )
+              };
+            }
+            return sess;
+          })
+        );
+      } else {
+        // Fallback to Google Apps Script
+        const queryParams = new URLSearchParams({
+          message: userMsgText,
+          attachment: attachedName || '',
+          history: JSON.stringify(historyContext)
+        }).toString();
+
+        const res = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
+        const scriptData = await res.json();
+        const totalLatency = `${Date.now() - startTime}ms`;
+
+        setSessions((prevSessions) =>
+          prevSessions.map((sess) => {
+            if (sess.id === currentSessionId) {
+              return {
+                ...sess,
+                messages: sess.messages.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        text: scriptData.response || 'No response received from model endpoint.',
+                        latency: totalLatency,
+                        isError: !scriptData.response
+                      }
+                    : m
+                )
+              };
+            }
+            return sess;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Chat Streaming Error:', err);
       setSessions((prevSessions) =>
         prevSessions.map((sess) => {
           if (sess.id === currentSessionId) {
             return {
               ...sess,
-              messages: [...sess.messages, errorMsg]
+              messages: sess.messages.map((m) =>
+                m.id === aiMsgId
+                  ? {
+                      ...m,
+                      text: `Streaming Error: Unable to complete RunPod stream. (${err})`,
+                      isError: true
+                    }
+                  : m
+              )
             };
           }
           return sess;
@@ -214,7 +289,6 @@ export const SecureChatView: React.FC = () => {
     }
   };
 
-  // Create a completely new, isolated session
   const handleNewChat = () => {
     const newSessionId = `session-${Date.now()}`;
     const newSession: ChatSession = {
@@ -225,9 +299,9 @@ export const SecureChatView: React.FC = () => {
         {
           id: `welcome-${newSessionId}`,
           sender: 'ai',
-          text: 'Welcome to a new Anacleto AI Session. Connected to Anacleto-120B-Omni with fresh memory context.',
+          text: 'Welcome to a new Anacleto AI Session. Connected to RunPod Serverless with real-time token streaming.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni'
+          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
         }
       ]
     };
@@ -300,7 +374,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
             <span className="font-semibold text-[#F5F5F5]">Active Session: {activeSession.title}</span>
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">Anacleto-120B-Omni</span>
+            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">RunPod Streaming</span>
           </div>
           <div className="hidden sm:flex items-center gap-4">
             <span className="flex items-center gap-1 text-[#BDBDBD]">
@@ -355,7 +429,16 @@ export const SecureChatView: React.FC = () => {
                   </div>
                 </div>
 
-                <p className="whitespace-pre-wrap">{msg.text}</p>
+                <div className="whitespace-pre-wrap">
+                  {msg.text ? (
+                    msg.text
+                  ) : msg.sender === 'ai' && !msg.isError ? (
+                    <div className="flex items-center gap-2 text-xs text-[#BDBDBD]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FFD54F]" />
+                      <span>Thinking...</span>
+                    </div>
+                  ) : null}
+                </div>
 
                 {msg.modelUsed && msg.sender === 'ai' && (
                   <div className="mt-3 pt-2 border-t border-[#333333] flex items-center justify-between text-[11px] font-mono text-[#FFD54F]/80">
@@ -378,20 +461,6 @@ export const SecureChatView: React.FC = () => {
               )}
             </div>
           ))}
-
-          {loading && (
-            <div className="flex gap-3 sm:gap-4 justify-start">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#FFD54F] p-0.5 flex-shrink-0">
-                <div className="w-full h-full bg-[#121212] rounded-[10px] flex items-center justify-center text-[#FFD54F]">
-                  <Bot className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">Anacleto-120B-Omni is thinking...</span>
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -454,7 +523,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign Session Memory Active.
+              RunPod Token-by-Token SSE Stream Active.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>

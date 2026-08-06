@@ -1,12 +1,13 @@
 /**
  * ANACLETO AI - Sovereign Session & Multi-Turn Chat Backend
+ * RunPod Serverless API Integration
  * Google Apps Script Web App Endpoint
  */
 
-var DEEPSEEK_API_KEY = "DEEPSEEK_API_KEY_HERE";
-var PRIMARY_MODEL = "deepseek-chat";
-var ANACLETO_BRAND_MODEL = "Anacleto-120B-Omni";
-var DEEPSEEK_BASE_URL = "https://api.deepseek.com/chat/completions";
+var RUNPOD_API_KEY = "YOUR_RUNPOD_API_KEY_HERE";
+var RUNPOD_ENDPOINT_ID = "ywhi6e5t9yof38";
+var RUNPOD_RUNSYNC_URL = "https://api.runpod.ai/v2/" + RUNPOD_ENDPOINT_ID + "/runsync";
+var ANACLETO_BRAND_MODEL = "Anacleto-120B-Omni (RunPod)";
 
 function doGet(e) {
   return handleChatRequest(e);
@@ -14,6 +15,33 @@ function doGet(e) {
 
 function doPost(e) {
   return handleChatRequest(e);
+}
+
+function parseRunpodOutput(output) {
+  if (!output) return "";
+  if (typeof output === "string") return output;
+
+  var target = Array.isArray(output) ? output[0] : output;
+  if (!target) return "";
+
+  if (target.choices && Array.isArray(target.choices) && target.choices.length > 0) {
+    var choice = target.choices[0];
+    if (choice.message && choice.message.content) {
+      return choice.message.content;
+    }
+    if (Array.isArray(choice.tokens)) {
+      return choice.tokens.join("");
+    }
+    if (typeof choice.text === "string") {
+      return choice.text;
+    }
+  }
+
+  if (Array.isArray(target.tokens)) {
+    return target.tokens.join("");
+  }
+
+  return "";
 }
 
 function handleChatRequest(e) {
@@ -34,7 +62,6 @@ function handleChatRequest(e) {
     var attachmentName = params.attachment || "";
     var conversationHistory = [];
 
-    // Parse full conversation history sent from frontend for multi-turn follow up
     if (params.history) {
       try {
         conversationHistory = typeof params.history === "string" ? JSON.parse(params.history) : params.history;
@@ -57,15 +84,13 @@ function handleChatRequest(e) {
 
     var startTime = new Date().getTime();
 
-    // Construct multi-turn messages array with full context memory
     var apiMessages = [
       {
         role: "system",
-        content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses. Maintain context across user follow-up questions."
+        content: "You are a helpful, smart, concise AI assistant."
       }
     ];
 
-    // Append prior message history for this active chat session
     for (var i = 0; i < conversationHistory.length; i++) {
       var item = conversationHistory[i];
       if (item.sender === "user") {
@@ -75,31 +100,33 @@ function handleChatRequest(e) {
       }
     }
 
-    // Append current user message if not already included
     if (userContent && (apiMessages.length === 1 || apiMessages[apiMessages.length - 1].content !== userContent)) {
       apiMessages.push({ role: "user", content: userContent });
     }
 
     var payload = {
-      model: PRIMARY_MODEL,
-      messages: apiMessages,
-      stream: false,
-      temperature: 0.7,
-      max_tokens: 2048
+      input: {
+        messages: apiMessages,
+        stream: false,
+        sampling_params: {
+          max_tokens: 512,
+          temperature: 0.7
+        }
+      }
     };
 
     var options = {
       method: "post",
       contentType: "application/json",
       headers: {
-        "Authorization": "Bearer " + DEEPSEEK_API_KEY,
+        "Authorization": "Bearer " + RUNPOD_API_KEY,
         "Accept": "application/json"
       },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     };
 
-    var response = UrlFetchApp.fetch(DEEPSEEK_BASE_URL, options);
+    var response = UrlFetchApp.fetch(RUNPOD_RUNSYNC_URL, options);
     var endTime = new Date().getTime();
     var latencyMs = endTime - startTime;
     var responseCode = response.getResponseCode();
@@ -107,27 +134,26 @@ function handleChatRequest(e) {
 
     if (responseCode === 200) {
       var json = JSON.parse(responseText);
-      if (json.choices && json.choices.length > 0 && json.choices[0].message) {
+      var replyText = parseRunpodOutput(json.output);
+
+      if (replyText) {
         return responseJSON({
           status: "success",
-          response: json.choices[0].message.content,
+          response: replyText,
           model: ANACLETO_BRAND_MODEL,
           latency: latencyMs + "ms"
         });
       }
     }
 
-    Logger.log("API Error (" + responseCode + "): " + responseText);
-
     return responseJSON({
       status: "error",
-      response: "Inference Error (" + responseCode + "): " + responseText,
+      response: "RunPod Inference Error (" + responseCode + "): " + responseText,
       model: ANACLETO_BRAND_MODEL,
       latency: latencyMs + "ms"
     });
 
   } catch (err) {
-    Logger.log("Execution Error: " + err.toString());
     return responseJSON({
       status: "error",
       response: "Execution error: " + err.toString()
