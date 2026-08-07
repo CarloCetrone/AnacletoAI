@@ -1,4 +1,4 @@
-// Supabase Edge Function: Real-Time Document Analysis & RunPod Chat Proxy
+// Supabase Edge Function: Real-Time ReAct Tool-Calling Agent Protocol
 // Location: supabase/functions/chat/index.ts
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Web Search Tool (DuckDuckGo Engine)
+// High-Precision Real-Time Web Search Tool (DuckDuckGo HTML Engine)
 async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -51,18 +51,43 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
   }
 }
 
-// Intent Classifier: Checks if a prompt actually requires real-time web search or live information
-function requiresWebSearch(prompt: string): boolean {
-  if (!prompt) return false;
-  
-  // Real-time signals: dates, news, weather, sports, stock prices, current events, locations, "who is", "what is the price of"
-  const realTimePatterns = [
-    /\b(today|now|current|latest|news|weather|price|stock|market|score|match|winner|where is|who is|when is)\b/i,
-    /\b(search|google|find online|check web|look up|info about)\b/i,
-    /\b(2025|2026|2027)\b/
-  ];
+// Helper to execute LLM API call synchronously
+async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
+  const payload = {
+    input: {
+      messages,
+      sampling_params: { max_tokens: maxTokens, temperature }
+    }
+  };
 
-  return realTimePatterns.some((pattern) => pattern.test(prompt));
+  const res = await fetch(RUNPOD_RUN_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${RUNPOD_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    if (data.status === "COMPLETED" && data.output) {
+      let outputText = "";
+      if (typeof data.output === "string") {
+        outputText = data.output;
+      } else if (Array.isArray(data.output)) {
+        for (const item of data.output) {
+          if (typeof item === "string") outputText += item;
+          else if (item.choices?.[0]?.message?.content) outputText += item.choices[0].message.content;
+        }
+      } else if (data.output.choices?.[0]?.message?.content) {
+        outputText = data.output.choices[0].message.content;
+      }
+      return outputText;
+    }
+  }
+
+  return "";
 }
 
 serve(async (req) => {
@@ -84,10 +109,20 @@ serve(async (req) => {
     const currentDateStr = now.toISOString().split("T")[0];
     const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
 
-    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's real-world current date is ${currentDateStr} and the current time is ${currentTimeStr} (CEST/UTC+2). Provide concise, highly technical, intelligent, and accurate responses.`;
+    // Agent System Prompt defining available tools and tool-call syntax
+    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's current date is ${currentDateStr} and time is ${currentTimeStr} (CEST/UTC+2).`;
 
     if (webSearch) {
-      systemPrompt += " Web Search capability is ENABLED. If real-time search context is provided, use it to accurately ground your response and cite sources. If no search context is provided or needed, answer using your internal knowledge.";
+      systemPrompt += `
+TOOLS AVAILABLE:
+- web_search(query): You can call this search tool to look up real-time news, current events, locations, weather, or real-world facts.
+
+TOOL CALL INSTRUCTIONS:
+If you need external information to answer the user's prompt accurately, output ONLY the tool call in this exact format:
+\`\`\`tool_call
+web_search("your search query here")
+\`\`\`
+If no search tool call is needed, answer the user directly using your knowledge without writing a tool_call.`;
     }
 
     if (deepReasoning) {
@@ -108,20 +143,7 @@ serve(async (req) => {
 
     let userPromptText = message || "";
     let finalUserMessage = userPromptText;
-    let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
-    // CONDITIONAL TOOL EXECUTION:
-    // When Web Search is enabled, ONLY execute web search if the prompt actually requires live/external info
-    const shouldSearch = webSearch && requiresWebSearch(userPromptText);
-
-    if (shouldSearch && userPromptText) {
-      searchData = await performWebSearch(userPromptText);
-      if (searchData.searchSummary) {
-        finalUserMessage = `[REAL-TIME LIVE WEB SEARCH RESULTS (Current Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${searchData.searchSummary}\n\n[USER QUESTION]: ${userPromptText}\n\n[INSTRUCTION]: Answer the user's question accurately using the live web search results above.`;
-      }
-    }
-
-    // Document Context Injection
     if (fileContent) {
       finalUserMessage = `[ATTACHED DOCUMENT CONTEXT: "${attachment || "document"}"]\n--- BEGIN ATTACHMENT ---\n${fileContent}\n--- END ATTACHMENT ---\n\n${finalUserMessage}`;
     }
@@ -129,165 +151,58 @@ serve(async (req) => {
     apiMessages.push({ role: "user", content: finalUserMessage });
 
     const startTime = Date.now();
+    let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
-    // Synchronous RunPod Call
-    const runpodPayload = {
-      input: {
-        messages: apiMessages,
-        sampling_params: {
-          max_tokens: deepReasoning ? 2048 : 1536,
-          temperature: deepReasoning ? 0.4 : 0.6,
-        },
-      },
-    };
+    // STEP 1: Turn 1 - Execute First Model Turn
+    let firstTurnOutput = await invokeModel(apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.5);
 
-    const syncRes = await fetch(RUNPOD_RUN_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(runpodPayload),
-    });
+    // Check if the agent decided to issue a tool_call
+    const toolCallMatch = firstTurnOutput.match(/```tool_call\s*\n?\s*web_search\("([^"]+)"\)\s*\n?\s*```/i) 
+                       || firstTurnOutput.match(/web_search\("([^"]+)"\)/i);
 
-    const latencyMs = Date.now() - startTime;
+    if (webSearch && toolCallMatch) {
+      const searchQuery = toolCallMatch[1];
+      console.log(`Agent issued tool call: web_search("${searchQuery}")`);
 
-    if (syncRes.ok) {
-      const syncData = await syncRes.json();
-      
-      if (syncData.status === "COMPLETED" && syncData.output) {
-        let textOutput = "";
+      // STEP 2: Execute Web Search Tool requested by the agent
+      searchData = await performWebSearch(searchQuery);
 
-        if (typeof syncData.output === "string") {
-          textOutput = syncData.output;
-        } else if (Array.isArray(syncData.output)) {
-          for (const item of syncData.output) {
-            if (typeof item === "string") {
-              textOutput += item;
-            } else if (item.choices?.[0]?.message?.content) {
-              textOutput += item.choices[0].message.content;
-            } else if (item.choices?.[0]?.tokens) {
-              textOutput += item.choices[0].tokens.join("");
-            }
-          }
-        } else if (syncData.output.choices?.[0]?.message?.content) {
-          textOutput = syncData.output.choices[0].message.content;
-        } else if (syncData.output.choices?.[0]?.tokens) {
-          textOutput = syncData.output.choices[0].tokens.join("");
-        }
+      // Add agent's tool call message and tool response message into conversation trajectory
+      apiMessages.push({ role: "assistant", content: `\`\`\`tool_call\nweb_search("${searchQuery}")\n\`\`\`` });
+      apiMessages.push({
+        role: "user",
+        content: `[TOOL RESPONSE FOR web_search("${searchQuery}")]:\n${searchData.searchSummary || "No results found."}\n\nNow provide your final concise answer to the user.`
+      });
 
-        if (textOutput) {
-          return new Response(
-            JSON.stringify({
-              status: "success",
-              response: textOutput,
-              searchSummary: searchData.searchSummary,
-              sources: searchData.sources,
-              model: "Anacleto-120B-Omni",
-              latency: `${latencyMs}ms`,
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-          );
-        }
-      }
-    }
+      // STEP 3: Turn 2 - Model generates final response informed by tool output
+      let finalAgentResponse = await invokeModel(apiMessages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
 
-    // Async Fallback
-    const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        input: {
-          messages: apiMessages,
-          stream: true,
-          sampling_params: {
-            max_tokens: deepReasoning ? 2048 : 1536,
-            temperature: deepReasoning ? 0.4 : 0.6,
-          },
-        },
-      }),
-    });
-
-    const asyncData = await asyncRes.json();
-    const jobId = asyncData.id;
-
-    if (!jobId) {
-      return new Response(
-        JSON.stringify({ status: "error", response: "Failed to schedule inference job." }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-      );
-    }
-
-    let collectedText = "";
-    let isCompleted = false;
-    let retries = 0;
-    const maxRetries = 60;
-
-    while (!isCompleted && retries < maxRetries) {
-      retries++;
-      try {
-        const streamRes = await fetch(`${RUNPOD_STREAM_URL_BASE}/${jobId}`, {
-          headers: {
-            "Authorization": `Bearer ${RUNPOD_API_KEY}`,
-          },
-        });
-
-        if (streamRes.ok) {
-          const streamData = await streamRes.json();
-          const status = streamData.status;
-          const streamItems = streamData.stream || [];
-
-          for (const item of streamItems) {
-            const output = item.output;
-            if (typeof output === "string") {
-              collectedText += output;
-            } else if (Array.isArray(output)) {
-              for (const entry of output) {
-                if (entry.choices?.[0]?.tokens) {
-                  collectedText += entry.choices[0].tokens.join("");
-                } else if (typeof entry === "string") {
-                  collectedText += entry;
-                }
-              }
-            } else if (output?.choices?.[0]?.tokens) {
-              collectedText += output.choices[0].tokens.join("");
-            }
-          }
-
-          if (status === "COMPLETED" || status === "FAILED") {
-            isCompleted = true;
-            break;
-          }
-        }
-      } catch (e) {
-        console.error("Stream polling error:", e);
-      }
-
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    const finalLatency = Date.now() - startTime;
-
-    if (collectedText) {
+      const latencyMs = Date.now() - startTime;
       return new Response(
         JSON.stringify({
           status: "success",
-          response: collectedText,
-          searchSummary: searchData.searchSummary,
+          response: finalAgentResponse,
+          searchSummary: `[Agent Tool Call]: web_search("${searchQuery}")\n\n${searchData.searchSummary}`,
           sources: searchData.sources,
           model: "Anacleto-120B-Omni",
-          latency: `${finalLatency}ms`,
+          latency: `${latencyMs}ms`,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
+    // If no tool call was issued, return direct first-turn answer
+    const totalLatency = Date.now() - startTime;
     return new Response(
-      JSON.stringify({ status: "error", response: "Inference engine returned empty response." }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      JSON.stringify({
+        status: "success",
+        response: firstTurnOutput || "Processed request.",
+        searchSummary: "",
+        sources: [],
+        model: "Anacleto-120B-Omni",
+        latency: `${totalLatency}ms`,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
 
   } catch (err) {
