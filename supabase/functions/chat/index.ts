@@ -14,64 +14,49 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Robust Multi-Provider Web Search (DuckDuckGo Lite POST + DuckDuckGo HTML)
+// High-Reliability Multi-Engine Web Search Parser
 async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
     const snippets: string[] = [];
     const sources: string[] = [];
 
-    // Provider 1: DuckDuckGo Lite (POST form-urlencoded)
-    const liteUrl = `https://lite.duckduckgo.com/lite/`;
-    const bodyParams = new URLSearchParams({ q: query });
-    const liteRes = await fetch(liteUrl, {
-      method: "POST",
+    // 1. DuckDuckGo HTML GET Engine (Reliable text snippet extractor)
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(searchUrl, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      },
-      body: bodyParams.toString()
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,it;q=0.8"
+      }
     });
 
-    if (liteRes.ok) {
-      const liteHtml = await liteRes.text();
-      const snippetMatches = liteHtml.match(/<td class="result-snippet">([\s\S]*?)<\/td>/g) || [];
-      const linkMatches = liteHtml.match(/<a class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g) || [];
+    if (res.ok) {
+      const htmlText = await res.text();
+      const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
+      const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
 
       for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
         const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-        let cleanUrl = "";
-        if (linkMatches[i]) {
-          const hrefMatch = linkMatches[i].match(/href="([^"]+)"/);
-          cleanUrl = hrefMatch ? hrefMatch[1] : "";
-        }
+        const cleanUrl = urlMatches[i] ? urlMatches[i].replace(/<[^>]+>/g, "").trim() : "";
 
         if (cleanSnippet) {
-          snippets.push(`[Source ${i + 1} (${cleanUrl || "web"})]: ${cleanSnippet}`);
+          snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
           sources.push(cleanUrl || `Search Result ${i + 1}`);
         }
       }
     }
 
-    // Provider 2 Fallback: DuckDuckGo HTML GET
+    // 2. Wikipedia Search API Fallback
     if (snippets.length === 0) {
-      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-      const res = await fetch(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept-Language": "en-US,en;q=0.9,it;q=0.8"
-        }
-      });
-      if (res.ok) {
-        const htmlText = await res.text();
-        const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
-        const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
-        for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
-          const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-          const cleanUrl = urlMatches[i] ? urlMatches[i].replace(/<[^>]+>/g, "").trim() : "";
-          if (cleanSnippet) {
-            snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
-            sources.push(cleanUrl || `Search Result ${i + 1}`);
-          }
+      const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+      const wikiRes = await fetch(wikiUrl);
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        const results = wikiData.query?.search || [];
+        for (let i = 0; i < Math.min(3, results.length); i++) {
+          const cleanSnippet = results[i].snippet.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').trim();
+          snippets.push(`[Wikipedia: ${results[i].title}]: ${cleanSnippet}`);
+          sources.push(`https://it.wikipedia.org/wiki/${encodeURIComponent(results[i].title)}`);
         }
       }
     }
