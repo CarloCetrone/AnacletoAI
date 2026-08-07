@@ -14,51 +14,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Robust Real-Time Web Search Tool (DuckDuckGo Lite API + HTML Scraper)
+// High-Precision Real-Time Web Search Tool (Wikipedia + DDG HTML Parser)
 async function performWebSearch(query: string): Promise<string> {
   try {
+    const snippets: string[] = [];
+
+    // 1. Query Wikipedia API for geographic places & factual topics
+    const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+    const wikiRes = await fetch(wikiUrl);
+    if (wikiRes.ok) {
+      const wikiData = await wikiRes.json();
+      const results = wikiData.query?.search || [];
+      for (let i = 0; i < Math.min(2, results.length); i++) {
+        const snippetText = results[i].snippet.replace(/<[^>]+>/g, "").trim();
+        snippets.push(`[Wikipedia Source ${i + 1}: ${results[i].title}]: ${snippetText}`);
+      }
+    }
+
+    // 2. Query DuckDuckGo Lite for live web search
     const searchUrl = `https://lite.duckduckgo.com/lite/`;
     const bodyParams = new URLSearchParams({ q: query });
-
-    const res = await fetch(searchUrl, {
+    const ddgRes = await fetch(searchUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
       },
       body: bodyParams.toString()
     });
 
-    if (!res.ok) return "";
-    const htmlText = await res.text();
+    if (ddgRes.ok) {
+      const htmlText = await ddgRes.text();
+      const resultRegex = /<td class="result-snippet">([\s\S]*?)<\/td>/g;
+      let match;
+      let count = snippets.length + 1;
 
-    const snippets: string[] = [];
-    const resultRegex = /<td class="result-snippet">([\s\S]*?)<\/td>/g;
-    let match;
-    let count = 0;
-
-    while ((match = resultRegex.exec(htmlText)) !== null && count < 4) {
-      const cleanText = match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-      if (cleanText) {
-        snippets.push(`[Web Source ${count + 1}]: ${cleanText}`);
-        count++;
-      }
-    }
-
-    if (snippets.length === 0) {
-      // Fallback API query
-      const fallbackUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
-      const fbRes = await fetch(fallbackUrl);
-      if (fbRes.ok) {
-        const fbJson = await fbRes.json();
-        if (fbJson.AbstractText) {
-          snippets.push(`[Web Source 1]: ${fbJson.AbstractText}`);
-        } else if (fbJson.RelatedTopics && fbJson.RelatedTopics.length > 0) {
-          for (let i = 0; i < Math.min(3, fbJson.RelatedTopics.length); i++) {
-            if (fbJson.RelatedTopics[i].Text) {
-              snippets.push(`[Web Source ${i + 1}]: ${fbJson.RelatedTopics[i].Text}`);
-            }
-          }
+      while ((match = resultRegex.exec(htmlText)) !== null && count <= 5) {
+        const cleanText = match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+        if (cleanText) {
+          snippets.push(`[Web Source ${count}]: ${cleanText}`);
+          count++;
         }
       }
     }
@@ -85,11 +80,15 @@ serve(async (req) => {
       );
     }
 
-    const currentDateStr = new Date().toISOString().split("T")[0];
-    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's real-world current date is ${currentDateStr}. Provide concise, highly technical, intelligent, and accurate responses.`;
+    const now = new Date();
+    const currentDateStr = now.toISOString().split("T")[0];
+    const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const currentDayOfWeek = now.toLocaleDateString("en-US", { weekday: "long" });
+
+    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today is ${currentDayOfWeek}, ${currentDateStr}, and the current real-time timestamp is ${currentTimeStr} (CEST/UTC+2). Provide concise, highly technical, intelligent, and accurate responses.`;
 
     if (webSearch) {
-      systemPrompt += " Web Search mode is active. You MUST use the provided web search context to answer current date, real-time news, or external search queries, referencing the sources provided.";
+      systemPrompt += " Web Search mode is active. Use the provided web search context to answer current date, real-time news, or geographic search queries accurately.";
     }
 
     if (deepReasoning) {
@@ -114,22 +113,24 @@ serve(async (req) => {
 
     let userContent = message || "";
 
-    // Execute Live Web Search if enabled OR if prompt explicitly requests searching
-    const needsSearch = webSearch || (userContent && /search|today|current date|latest|news|weather/i.test(userContent));
+    // Execute Live Web Search if enabled OR if prompt asks for places, current date, news, or time
+    const isSearchQuery = webSearch || (userContent && /search|marotta|fano|where|where is|latest|news|weather|who is/i.test(userContent));
 
-    if (needsSearch && userContent) {
+    if (isSearchQuery && userContent) {
       const webResults = await performWebSearch(userContent);
       if (webResults) {
-        userContent = `[REAL-TIME LIVE WEB SEARCH RESULTS (Date: ${currentDateStr})]\n${webResults}\n\nUser Question: ${userContent}`;
+        userContent = `[REAL-TIME LIVE SEARCH CONTEXT (Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\nUser Question: ${userContent}`;
       } else {
-        userContent = `[SYSTEM NOTE: Today's current date is ${currentDateStr}]\n${userContent}`;
+        userContent = `[SYSTEM TIME CONTEXT: ${currentDayOfWeek}, ${currentDateStr} at ${currentTimeStr}]\n${userContent}`;
       }
+    } else if (userContent && /time|clock|hour|che ora è/i.test(userContent)) {
+      userContent = `[SYSTEM REAL-TIME TIMESTAMP: ${currentTimeStr} (CEST/UTC+2), Date: ${currentDayOfWeek}, ${currentDateStr}]\nUser Question: ${userContent}`;
     }
 
     // Inject document text context
     if (fileContent) {
       userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
-    } else if (attachment && !needsSearch) {
+    } else if (attachment && !isSearchQuery) {
       userContent = `[Attached File: ${attachment}]\n${userContent}`;
     }
 
