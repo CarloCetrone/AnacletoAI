@@ -230,21 +230,26 @@ If no search tool call is needed, answer the user directly using your knowledge 
       // STEP 2: Execute Web Search Tool requested by the agent
       searchData = await performWebSearch(searchQuery);
 
-      // Add agent's tool call message and tool response message into conversation trajectory
-      apiMessages.push({ role: "assistant", content: `\`\`\`tool_call\nweb_search("${searchQuery}")\n\`\`\`` });
-      apiMessages.push({
-        role: "user",
-        content: `[TOOL RESPONSE FOR web_search("${searchQuery}")]:\n${searchData.searchSummary || "No results found."}\n\nNow provide your final concise answer to the user.`
-      });
+      // Construct explicit Turn 2 trajectory:
+      // Turn 1 Assistant Message: The tool call request
+      // Turn 2 User Message: Injected Tool Results with System Instructions
+      const turn2Messages = [
+        ...apiMessages,
+        { role: "assistant", content: `\`\`\`tool_call\nweb_search("${searchQuery}")\n\`\`\`` },
+        {
+          role: "user",
+          content: `[SYSTEM OBSERVATION / TOOL RESPONSE FOR web_search("${searchQuery}")]:\n${searchData.searchSummary || "No results found."}\n\n[INSTRUCTION]: Read the search results above carefully and answer the user's question with full detail.`
+        }
+      ];
 
       // STEP 3: Turn 2 - Model generates final response informed by tool output
-      let finalAgentResponse = await invokeModel(apiMessages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
+      let finalAgentResponse = await invokeModel(turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
 
       const latencyMs = Date.now() - startTime;
       return new Response(
         JSON.stringify({
           status: "success",
-          response: finalAgentResponse || "Processed request based on search results.",
+          response: finalAgentResponse || `Based on the search for "${searchQuery}":\n\n${searchData.searchSummary}`,
           searchSummary: `[Agent Tool Call]: web_search("${searchQuery}")\n\n${searchData.searchSummary}`,
           sources: searchData.sources,
           model: "Anacleto-120B-Omni",
