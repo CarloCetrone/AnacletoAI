@@ -1,13 +1,13 @@
-// Supabase Edge Function: Real-Time ReAct Tool-Calling Agent Protocol
+// Supabase Edge Function: Real-Time ReAct Tool-Calling Agent Protocol (Multi-Model Support)
 // Location: supabase/functions/chat/index.ts
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const RUNPOD_API_KEY = Deno.env.get("RUNPOD_API_KEY") || "";
-const RUNPOD_ENDPOINT_ID = Deno.env.get("RUNPOD_ENDPOINT_ID") || "ywhi6e5t9yof38";
-const RUNPOD_RUN_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync`;
-const RUNPOD_RUN_ASYNC_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/run`;
-const RUNPOD_STREAM_URL_BASE = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/stream`;
+
+// RunPod Endpoint IDs
+const ENDPOINT_32B = Deno.env.get("RUNPOD_ENDPOINT_ID_32B") || Deno.env.get("RUNPOD_ENDPOINT_ID") || "ywhi6e5t9yof38";
+const ENDPOINT_7B = Deno.env.get("RUNPOD_ENDPOINT_ID_7B") || "g1cdki7dv7wb07";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +20,7 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
     const snippets: string[] = [];
     const sources: string[] = [];
 
-    // 1. DuckDuckGo HTML GET Engine (Reliable text snippet extractor)
+    // 1. DuckDuckGo HTML GET Engine
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const res = await fetch(searchUrl, {
       headers: {
@@ -68,8 +68,12 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
   }
 }
 
-// Robust Helper to execute LLM API call with Sync & Async Stream Fallback
-async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
+// Robust Helper to execute LLM API call for dynamic endpoint
+async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
+  const runUrl = `https://api.runpod.ai/v2/${endpointId}/runsync`;
+  const asyncUrl = `https://api.runpod.ai/v2/${endpointId}/run`;
+  const streamUrlBase = `https://api.runpod.ai/v2/${endpointId}/stream`;
+
   const payload = {
     input: {
       messages,
@@ -79,7 +83,7 @@ async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5)
 
   try {
     // 1. Try Sync RunPod Endpoint
-    const res = await fetch(RUNPOD_RUN_URL, {
+    const res = await fetch(runUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${RUNPOD_API_KEY}`,
@@ -111,7 +115,7 @@ async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5)
     }
 
     // 2. Fallback to Async Stream Polling Endpoint
-    const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
+    const asyncRes = await fetch(asyncUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${RUNPOD_API_KEY}`,
@@ -135,7 +139,7 @@ async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5)
         let retries = 0;
         while (!isCompleted && retries < 40) {
           retries++;
-          const streamRes = await fetch(`${RUNPOD_STREAM_URL_BASE}/${jobId}`, {
+          const streamRes = await fetch(`${streamUrlBase}/${jobId}`, {
             headers: { "Authorization": `Bearer ${RUNPOD_API_KEY}` }
           });
           if (streamRes.ok) {
@@ -176,7 +180,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, history, attachment, fileContent, webSearch, deepReasoning } = await req.json();
+    const { message, history, attachment, fileContent, webSearch, deepReasoning, model } = await req.json();
 
     if (!message && !fileContent && (!history || history.length === 0)) {
       return new Response(
@@ -185,12 +189,17 @@ serve(async (req) => {
       );
     }
 
+    // Determine target RunPod Endpoint & Model Display Name
+    const is7b = model === "anacleto-7b" || model === "7b";
+    const targetEndpoint = is7b ? ENDPOINT_7B : ENDPOINT_32B;
+    const modelDisplayName = is7b ? "Anacleto-7B-Turbo" : "Anacleto-32B-Omni";
+
     const now = new Date();
     const currentDateStr = now.toISOString().split("T")[0];
     const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
 
     // Agent System Prompt defining available tools and tool-call syntax
-    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's current date is ${currentDateStr} and time is ${currentTimeStr} (CEST/UTC+2).`;
+    let systemPrompt = `You are ${modelDisplayName}, a sovereign enterprise foundation model. Today's current date is ${currentDateStr} and time is ${currentTimeStr} (CEST/UTC+2).`;
 
     if (webSearch) {
       systemPrompt += `
@@ -234,7 +243,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
     let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
     // STEP 1: Turn 1 - Execute First Model Turn
-    let firstTurnOutput = await invokeModel(apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.5);
+    let firstTurnOutput = await invokeModel(targetEndpoint, apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.5);
 
     // Check if the agent decided to issue a tool_call
     const toolCallMatch = firstTurnOutput.match(/```tool_call\s*\n?\s*web_search\("([^"]+)"\)\s*\n?\s*```/i) 
@@ -242,7 +251,6 @@ If no search tool call is needed, answer the user directly using your knowledge 
 
     if (webSearch && toolCallMatch) {
       const searchQuery = toolCallMatch[1];
-      console.log(`Agent issued tool call: web_search("${searchQuery}")`);
 
       // STEP 2: Execute Web Search Tool requested by the agent
       searchData = await performWebSearch(searchQuery);
@@ -258,7 +266,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
       ];
 
       // STEP 3: Turn 2 - Model generates final response informed by tool output
-      let finalAgentResponse = await invokeModel(turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
+      let finalAgentResponse = await invokeModel(targetEndpoint, turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
 
       const latencyMs = Date.now() - startTime;
       return new Response(
@@ -267,15 +275,15 @@ If no search tool call is needed, answer the user directly using your knowledge 
           response: finalAgentResponse || `Based on the search for "${searchQuery}":\n\n${searchData.searchSummary}`,
           searchSummary: `[Agent Tool Call]: web_search("${searchQuery}")\n\n${searchData.searchSummary}`,
           sources: searchData.sources,
-          model: "Anacleto-120B-Omni",
+          model: modelDisplayName,
           latency: `${latencyMs}ms`,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
-    // If no tool call was issued, return direct first-turn answer (cleaning any raw tool_call tags)
-    const cleanOutput = firstTurnOutput.replace(/```tool_call[\s\S]*?```/g, "").trim() || "I am Anacleto AI. How can I assist you with your project today?";
+    // If no tool call was issued, return direct first-turn answer
+    const cleanOutput = firstTurnOutput.replace(/```tool_call[\s\S]*?```/g, "").trim() || `I am ${modelDisplayName}. How can I assist you with your project today?`;
     const totalLatency = Date.now() - startTime;
 
     return new Response(
@@ -284,7 +292,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
         response: cleanOutput,
         searchSummary: "",
         sources: [],
-        model: "Anacleto-120B-Omni",
+        model: modelDisplayName,
         latency: `${totalLatency}ms`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

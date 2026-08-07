@@ -23,8 +23,7 @@ import {
   Layout,
   ChevronDown,
   ChevronUp,
-  Search,
-  ExternalLink
+  Cpu
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
@@ -64,6 +63,9 @@ export const SecureChatView: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
+  // Model Selection State
+  const [selectedModel, setSelectedModel] = useState<'anacleto-32b' | 'anacleto-7b'>('anacleto-32b');
+
   // Modern Capability Toggles
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false);
@@ -83,9 +85,9 @@ export const SecureChatView: React.FC = () => {
         {
           id: 'welcome-msg',
           sender: 'ai',
-          text: 'Welcome to Anacleto AI. Connected to Anacleto-120B-Omni. Toggle Web Search 🌐 or Deep Reasoning 🧠 below to enhance intelligence.',
+          text: 'Welcome to Anacleto AI. Select between Anacleto-32B (Omni High-Reasoning) and Anacleto-7B (Turbo Low-Latency) from the model selector header.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni'
+          modelUsed: 'Anacleto-32B-Omni'
         }
       ]
     }
@@ -199,6 +201,7 @@ export const SecureChatView: React.FC = () => {
     const userMsgText = inputMessage;
     const attachedName = selectedFile ? selectedFile.name : undefined;
     const attachedContent = extractedFileText;
+    const activeModelKey = selectedModel;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -239,7 +242,7 @@ export const SecureChatView: React.FC = () => {
 
       let aiReplyText = '';
       let isErr = false;
-      let modelUsed = 'Anacleto-120B-Omni';
+      let modelUsed = activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni';
       let latency = '0ms';
       let searchSummary = '';
       let sources: string[] = [];
@@ -257,6 +260,7 @@ export const SecureChatView: React.FC = () => {
             fileContent: attachedContent || '',
             webSearch: webSearchEnabled,
             deepReasoning: deepReasoningEnabled,
+            model: activeModelKey,
             history: historyContext
           })
         });
@@ -264,7 +268,7 @@ export const SecureChatView: React.FC = () => {
         const data = await res.json();
         if (res.ok && data.response) {
           aiReplyText = data.response;
-          modelUsed = data.model || 'Anacleto-120B-Omni';
+          modelUsed = data.model || (activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni');
           latency = data.latency || '25ms';
           searchSummary = data.searchSummary || '';
           sources = data.sources || [];
@@ -345,7 +349,7 @@ export const SecureChatView: React.FC = () => {
         sender: 'ai',
         text: `Network Error: Unable to connect to backend endpoint. (${err.message || err})`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-120B-Omni',
+        modelUsed: selectedModel === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni',
         latency: '0ms',
         isError: true
       };
@@ -378,7 +382,7 @@ export const SecureChatView: React.FC = () => {
           sender: 'ai',
           text: 'Welcome to a new Anacleto AI Session. How can I assist you?',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni'
+          modelUsed: selectedModel === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni'
         }
       ]
     };
@@ -583,7 +587,7 @@ export const SecureChatView: React.FC = () => {
       {/* MAIN CHAT AREA */}
       <main className="flex-1 flex flex-col justify-between bg-[#121212] relative w-full overflow-hidden">
         
-        {/* Streamlined Top Chat Info Header */}
+        {/* Top Header with Model Selection Dropdown */}
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-4 sm:px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
           <div className="flex items-center gap-3">
             <button
@@ -596,16 +600,26 @@ export const SecureChatView: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
-              <span className="font-semibold text-[#F5F5F5] truncate max-w-[200px] sm:max-w-xs">
+              <span className="font-semibold text-[#F5F5F5] truncate max-w-[140px] sm:max-w-xs">
                 {activeSession.title}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2.5 py-0.5 rounded text-[10px] font-mono">
-              Anacleto-120B
-            </span>
+          {/* Model Selector Pill Dropdown */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex items-center">
+              <Cpu className="w-3.5 h-3.5 text-[#FFD54F] absolute left-2.5 pointer-events-none z-10" />
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value as 'anacleto-32b' | 'anacleto-7b')}
+                className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/40 pl-8 pr-7 py-1 rounded text-[11px] font-mono font-semibold focus:outline-none focus:border-[#FFD54F] cursor-pointer hover:bg-[#2F2F2F] transition-colors appearance-none"
+              >
+                <option value="anacleto-32b">Anacleto-32B (Omni Reasoning)</option>
+                <option value="anacleto-7b">Anacleto-7B (Turbo Low-Latency)</option>
+              </select>
+              <ChevronDown className="w-3 h-3 text-[#FFD54F] absolute right-2 pointer-events-none" />
+            </div>
           </div>
         </div>
 
@@ -639,7 +653,7 @@ export const SecureChatView: React.FC = () => {
               >
                 <div className="flex items-center justify-between gap-4 mb-2 text-[11px] opacity-70 border-b border-current/10 pb-1">
                   <span className="font-semibold flex items-center gap-1">
-                    {msg.sender === 'user' ? 'You' : 'Anacleto AI'}
+                    {msg.sender === 'user' ? 'You' : msg.modelUsed || 'Anacleto AI'}
                   </span>
                   <div className="flex items-center gap-2">
                     {msg.latency && (
@@ -702,7 +716,11 @@ export const SecureChatView: React.FC = () => {
               <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
                 <span className="text-xs text-[#BDBDBD]">
-                  {webSearchEnabled ? 'Searching real-time web & analyzing results...' : deepReasoningEnabled ? 'Performing deep multi-step reasoning...' : 'Anacleto AI is thinking...'}
+                  {webSearchEnabled 
+                    ? `Searching web with ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'}...` 
+                    : deepReasoningEnabled 
+                    ? `Reasoning with ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'}...` 
+                    : `${selectedModel === 'anacleto-7b' ? 'Anacleto-7B Turbo' : 'Anacleto-32B Omni'} is thinking...`}
                 </span>
               </div>
             </div>
@@ -715,30 +733,36 @@ export const SecureChatView: React.FC = () => {
         <div className="p-4 sm:p-6 bg-[#121212] border-t border-[#333333] max-w-4xl w-full mx-auto">
           
           {/* Capability Toggle Action Bar */}
-          <div className="flex items-center gap-2 mb-3 overflow-x-auto">
-            <button
-              onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                webSearchEnabled 
-                  ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
-                  : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
-              }`}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Web Search</span>
-            </button>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <button
+                onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  webSearchEnabled 
+                    ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
+                    : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Web Search</span>
+              </button>
 
-            <button
-              onClick={() => setDeepReasoningEnabled(!deepReasoningEnabled)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                deepReasoningEnabled 
-                  ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
-                  : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
-              }`}
-            >
-              <Brain className="w-3.5 h-3.5" />
-              <span>Deep Reasoning</span>
-            </button>
+              <button
+                onClick={() => setDeepReasoningEnabled(!deepReasoningEnabled)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  deepReasoningEnabled 
+                    ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
+                    : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
+                }`}
+              >
+                <Brain className="w-3.5 h-3.5" />
+                <span>Deep Reasoning</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-mono text-[#BDBDBD]">
+              Engine: <span className="text-[#FFD54F] font-semibold">{selectedModel === 'anacleto-7b' ? '7B Turbo' : '32B Omni'}</span>
+            </div>
           </div>
 
           {selectedFile && (
@@ -788,12 +812,12 @@ export const SecureChatView: React.FC = () => {
               }}
               placeholder={
                 webSearchEnabled 
-                  ? "Ask anything with Live Web Search..." 
+                  ? `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'} with Live Web Search...` 
                   : deepReasoningEnabled 
-                  ? "Ask complex reasoning or math problem..." 
+                  ? `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'} complex reasoning...` 
                   : selectedFile 
                   ? `Ask about ${selectedFile.name}...` 
-                  : "Ask Anacleto AI..."
+                  : `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B Turbo' : 'Anacleto-32B Omni'}...`
               }
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
@@ -810,7 +834,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign Enterprise Engine.
+              Sovereign Enterprise Multi-Engine Suite.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>
