@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Web Search Engine (DuckDuckGo HTML Engine)
+// High-Precision Real-Time Web Search Tool (DuckDuckGo Engine)
 async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -51,6 +51,20 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
   }
 }
 
+// Intent Classifier: Checks if a prompt actually requires real-time web search or live information
+function requiresWebSearch(prompt: string): boolean {
+  if (!prompt) return false;
+  
+  // Real-time signals: dates, news, weather, sports, stock prices, current events, locations, "who is", "what is the price of"
+  const realTimePatterns = [
+    /\b(today|now|current|latest|news|weather|price|stock|market|score|match|winner|where is|who is|when is)\b/i,
+    /\b(search|google|find online|check web|look up|info about)\b/i,
+    /\b(2025|2026|2027)\b/
+  ];
+
+  return realTimePatterns.some((pattern) => pattern.test(prompt));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -73,7 +87,7 @@ serve(async (req) => {
     let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's real-world current date is ${currentDateStr} and the current time is ${currentTimeStr} (CEST/UTC+2). Provide concise, highly technical, intelligent, and accurate responses.`;
 
     if (webSearch) {
-      systemPrompt += " Real-Time Web Search is ENABLED. You MUST base your answer directly on the provided search results context and cite the sources.";
+      systemPrompt += " Web Search capability is ENABLED. If real-time search context is provided, use it to accurately ground your response and cite sources. If no search context is provided or needed, answer using your internal knowledge.";
     }
 
     if (deepReasoning) {
@@ -96,17 +110,18 @@ serve(async (req) => {
     let finalUserMessage = userPromptText;
     let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
-    // 1. Web Search Context Injection
-    if (webSearch && userPromptText) {
+    // CONDITIONAL TOOL EXECUTION:
+    // When Web Search is enabled, ONLY execute web search if the prompt actually requires live/external info
+    const shouldSearch = webSearch && requiresWebSearch(userPromptText);
+
+    if (shouldSearch && userPromptText) {
       searchData = await performWebSearch(userPromptText);
       if (searchData.searchSummary) {
         finalUserMessage = `[REAL-TIME LIVE WEB SEARCH RESULTS (Current Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${searchData.searchSummary}\n\n[USER QUESTION]: ${userPromptText}\n\n[INSTRUCTION]: Answer the user's question accurately using the live web search results above.`;
-      } else {
-        finalUserMessage = `[REAL-TIME CLOCK: ${currentDateStr} ${currentTimeStr}]\n\n[USER QUESTION]: ${userPromptText}`;
       }
     }
 
-    // 2. Document Context Injection
+    // Document Context Injection
     if (fileContent) {
       finalUserMessage = `[ATTACHED DOCUMENT CONTEXT: "${attachment || "document"}"]\n--- BEGIN ATTACHMENT ---\n${fileContent}\n--- END ATTACHMENT ---\n\n${finalUserMessage}`;
     }
