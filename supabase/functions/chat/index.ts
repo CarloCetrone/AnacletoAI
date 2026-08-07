@@ -19,7 +19,7 @@ async function performWebSearch(query: string): Promise<string> {
   try {
     const snippets: string[] = [];
 
-    // 1. Wikipedia Search (Italian + English)
+    // 1. Query Wikipedia API
     const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
     const wikiRes = await fetch(wikiUrl);
     if (wikiRes.ok) {
@@ -31,7 +31,7 @@ async function performWebSearch(query: string): Promise<string> {
       }
     }
 
-    // 2. DuckDuckGo Instant Answer API
+    // 2. Query DuckDuckGo Instant Answer API
     const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
     const ddgRes = await fetch(ddgApiUrl);
     if (ddgRes.ok) {
@@ -69,7 +69,15 @@ serve(async (req) => {
       );
     }
 
-    let systemPrompt = "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses.";
+    const now = new Date();
+    const currentDateStr = now.toISOString().split("T")[0];
+    const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+
+    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's real-world current date is ${currentDateStr} and the current time is ${currentTimeStr} (CEST/UTC+2). Provide concise, highly technical, intelligent, and accurate responses.`;
+
+    if (webSearch) {
+      systemPrompt += " Real-Time Web Search is ENABLED. You MUST base your answer directly on the provided search results context and cite the sources.";
+    }
 
     if (deepReasoning) {
       systemPrompt += " Output your step-by-step reasoning inside `<think>`...`</think>` tags before giving your final answer.";
@@ -87,36 +95,29 @@ serve(async (req) => {
       }
     }
 
-    let userContent = message || "";
+    let userPromptText = message || "";
+    let finalUserMessage = userPromptText;
 
-    // ONLY execute Web Search if user explicitly enabled webSearch toggle button in UI
-    if (webSearch && userContent) {
-      const now = new Date();
-      const currentDateStr = now.toISOString().split("T")[0];
-      const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
-
-      const webResults = await performWebSearch(userContent);
+    // 1. Web Search Context Injection
+    if (webSearch && userPromptText) {
+      const webResults = await performWebSearch(userPromptText);
       if (webResults) {
-        userContent = `[LIVE WEB SEARCH CONTEXT (Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\nUser Question: ${userContent}`;
+        finalUserMessage = `[REAL-TIME LIVE WEB SEARCH RESULTS (Current Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\n[USER QUESTION]: ${userPromptText}\n\n[INSTRUCTION]: Answer the user's question accurately using the live web search results above.`;
       } else {
-        userContent = `[SYSTEM CLOCK CONTEXT: Date: ${currentDateStr}, Time: ${currentTimeStr}]\n${userContent}`;
+        finalUserMessage = `[REAL-TIME CLOCK: ${currentDateStr} ${currentTimeStr}]\n\n[USER QUESTION]: ${userPromptText}`;
       }
     }
 
-    // Inject document text context
+    // 2. Document Context Injection
     if (fileContent) {
-      userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
-    } else if (attachment && !webSearch) {
-      userContent = `[Attached File: ${attachment}]\n${userContent}`;
+      finalUserMessage = `[ATTACHED DOCUMENT CONTEXT: "${attachment || "document"}"]\n--- BEGIN ATTACHMENT ---\n${fileContent}\n--- END ATTACHMENT ---\n\n${finalUserMessage}`;
     }
 
-    if (userContent && (apiMessages.length === 1 || apiMessages[apiMessages.length - 1].content !== userContent)) {
-      apiMessages.push({ role: "user", content: userContent });
-    }
+    apiMessages.push({ role: "user", content: finalUserMessage });
 
     const startTime = Date.now();
 
-    // 1. Synchronous RunPod Call
+    // Synchronous RunPod Call
     const runpodPayload = {
       input: {
         messages: apiMessages,
@@ -176,7 +177,7 @@ serve(async (req) => {
       }
     }
 
-    // 2. Async Fallback
+    // Async Fallback
     const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
       method: "POST",
       headers: {
