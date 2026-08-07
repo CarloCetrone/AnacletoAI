@@ -17,9 +17,15 @@ import {
   Check,
   PanelLeftOpen,
   PanelLeftClose,
-  FileText
+  FileText,
+  Globe,
+  Brain,
+  Layout,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { ArtifactCanvas } from '@/components/ArtifactCanvas';
 
 const SUPABASE_FUNCTION_URL = 'https://zzlptwfqqnjhxtvmebqb.supabase.co/functions/v1/chat';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_8eu0QBwgFKoECWdlqf4DvQ_mtmVsixc';
@@ -43,10 +49,25 @@ interface ChatSession {
   createdAt: string;
 }
 
+interface ArtifactData {
+  title: string;
+  type: 'code' | 'html' | 'svg' | 'markdown';
+  content: string;
+}
+
 export const SecureChatView: React.FC = () => {
   const isConfigured = isSupabaseConfigured();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  // Modern Capability Toggles
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false);
+  const [openThinkId, setOpenThinkId] = useState<string | null>(null);
+
+  // Side-by-Side Artifact Canvas State
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
 
   const [sessions, setSessions] = useState<ChatSession[]>([
     {
@@ -57,7 +78,7 @@ export const SecureChatView: React.FC = () => {
         {
           id: 'welcome-msg',
           sender: 'ai',
-          text: 'Welcome to Anacleto AI. Connected to Anacleto-120B-Omni foundation model. How can I help you today?',
+          text: 'Welcome to Anacleto AI. Connected to Anacleto-120B-Omni. Toggle Web Search 🌐 or Deep Reasoning 🧠 below to enhance intelligence.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           modelUsed: 'Anacleto-120B-Omni'
         }
@@ -91,9 +112,7 @@ export const SecureChatView: React.FC = () => {
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
-  // Helper to extract clean printable text from PDF files (stripping PDF binary metadata)
   const extractPdfText = (rawPdfString: string): string => {
-    // Extract readable text chunks inside PDF text objects (BT ... ET) or stream blocks
     const textMatches = rawPdfString.match(/\(([^()]+)\)\s*Tj/g) || rawPdfString.match(/T[dD]\s*\(([^()]+)\)/g);
     if (textMatches && textMatches.length > 0) {
       return textMatches
@@ -101,12 +120,10 @@ export const SecureChatView: React.FC = () => {
         .filter((t) => t.trim().length > 2)
         .join(' ');
     }
-    // Fallback: strip binary characters and keep printable ASCII text
     const cleanPrintable = rawPdfString.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ');
-    return cleanPrintable.slice(0, 150000); // Cap to 150,000 characters
+    return cleanPrintable.slice(0, 150000);
   };
 
-  // Extract raw text from selected file using FileReader API
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -120,7 +137,6 @@ export const SecureChatView: React.FC = () => {
           const parsedPdfText = extractPdfText(rawContent);
           setExtractedFileText(parsedPdfText);
         } else {
-          // Truncate non-PDF files to max 150,000 chars to avoid payload overflow
           setExtractedFileText(rawContent.slice(0, 150000));
         }
       };
@@ -133,7 +149,6 @@ export const SecureChatView: React.FC = () => {
     }
   };
 
-  // Typewriter streaming effect helper
   const animateStreamResponse = (
     aiMsgId: string, 
     fullText: string, 
@@ -231,6 +246,8 @@ export const SecureChatView: React.FC = () => {
             message: userMsgText,
             attachment: attachedName || '',
             fileContent: attachedContent || '',
+            webSearch: webSearchEnabled,
+            deepReasoning: deepReasoningEnabled,
             history: historyContext
           })
         });
@@ -358,55 +375,112 @@ export const SecureChatView: React.FC = () => {
     setSidebarOpen(false);
   };
 
-  const renderMessageContent = (text: string) => {
-    const parts = text.split(/(```[\s\S]*?```)/g);
+  const renderMessageContent = (text: string, msgId: string) => {
+    let mainContent = text;
+    let thinkBlock = '';
 
-    return parts.map((part, idx) => {
-      if (part.startsWith('```') && part.endsWith('```')) {
-        const firstLineEnd = part.indexOf('\n');
-        const language = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : '';
-        const codeContent = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3) : part.slice(3, -3);
+    // Extract <think> reasoning blocks for Deep Reasoning Mode
+    const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      thinkBlock = thinkMatch[1].trim();
+      mainContent = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    }
 
-        return (
-          <div key={idx} className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
-            <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
-              <span className="uppercase font-semibold tracking-wider">{language || 'code'}</span>
-              <button
-                onClick={() => copyToClipboard(codeContent, `code-${idx}`)}
-                className="flex items-center gap-1 hover:text-[#FFD54F] transition-colors text-[11px]"
-              >
-                {copiedMsgId === `code-${idx}` ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Code</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed">
-              <code>{codeContent}</code>
-            </pre>
+    const parts = mainContent.split(/(```[\s\S]*?```)/g);
+
+    return (
+      <div className="space-y-3">
+        {/* Accordion Reasoning Block */}
+        {thinkBlock ? (
+          <div className="rounded-lg bg-[#121212] border border-[#333333] text-xs font-mono overflow-hidden my-2">
+            <button
+              onClick={() => setOpenThinkId(openThinkId === msgId ? null : msgId)}
+              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#FFD54F] transition-colors"
+            >
+              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
+                <Brain className="w-3.5 h-3.5" />
+                Thinking Process & Reasoning Steps
+              </span>
+              {openThinkId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {openThinkId === msgId && (
+              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
+                {thinkBlock}
+              </div>
+            )}
           </div>
-        );
-      }
+        ) : null}
 
-      return (
-        <span key={idx} className="whitespace-pre-wrap">
-          {part}
-        </span>
-      );
-    });
+        {/* Message Text & Code Snippets */}
+        {parts.map((part, idx) => {
+          if (part.startsWith('```') && part.endsWith('```')) {
+            const firstLineEnd = part.indexOf('\n');
+            const language = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : '';
+            const codeContent = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3) : part.slice(3, -3);
+
+            const isHtmlSvg = language === 'html' || language === 'svg' || codeContent.includes('<svg');
+
+            return (
+              <div key={idx} className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
+                <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
+                  <span className="uppercase font-semibold tracking-wider">{language || 'code'}</span>
+                  <div className="flex items-center gap-3">
+                    {isHtmlSvg && (
+                      <button
+                        onClick={() => {
+                          setActiveArtifact({
+                            title: `${language.toUpperCase()} Workspace`,
+                            type: language === 'svg' ? 'svg' : 'html',
+                            content: codeContent
+                          });
+                          setCanvasOpen(true);
+                        }}
+                        className="flex items-center gap-1 text-[#FFD54F] hover:underline font-sans text-[11px]"
+                      >
+                        <Layout className="w-3.5 h-3.5" />
+                        Open Canvas
+                      </button>
+                    )}
+                    <button
+                      onClick={() => copyToClipboard(codeContent, `code-${idx}`)}
+                      className="flex items-center gap-1 hover:text-[#FFD54F] transition-colors text-[11px]"
+                    >
+                      {copiedMsgId === `code-${idx}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Code</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed">
+                  <code>{codeContent}</code>
+                </pre>
+              </div>
+            );
+          }
+
+          return (
+            <span key={idx} className="whitespace-pre-wrap">
+              {part}
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
     <div className="h-[calc(100vh-64px)] flex overflow-hidden bg-[#121212] text-[#F5F5F5] relative">
       
-      {/* SIDEBAR BACKDROP FOR MOBILE */}
+      {/* MOBILE SIDEBAR BACKDROP */}
       {sidebarOpen && (
         <div 
           onClick={() => setSidebarOpen(false)}
@@ -420,7 +494,6 @@ export const SecureChatView: React.FC = () => {
       }`}>
         <div className="p-4 space-y-4">
           
-          {/* New Chat Button */}
           <button
             onClick={handleNewChat}
             className="w-full py-2.5 px-4 rounded-lg bg-transparent border border-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] text-[#FFD54F] font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group shadow-md shadow-[#FFD54F]/10"
@@ -429,7 +502,6 @@ export const SecureChatView: React.FC = () => {
             New Session
           </button>
 
-          {/* Sessions List */}
           <div className="space-y-1">
             <div className="px-3 py-1 text-[11px] font-bold text-[#BDBDBD] uppercase tracking-wider">
               Conversations
@@ -460,18 +532,17 @@ export const SecureChatView: React.FC = () => {
           </div>
         </div>
 
-        {/* Minimal Clean Sidebar Footer */}
         <div className="p-4 border-t border-[#333333] bg-[#121212] text-xs text-[#BDBDBD] flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#FFD54F] font-medium text-[11px]">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Sovereign Encryption</span>
+            <span>Sovereign Sandbox</span>
           </div>
           <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
         </div>
       </aside>
 
       {/* MAIN CHAT AREA */}
-      <main className="flex-1 flex flex-col justify-between bg-[#121212] relative w-full">
+      <main className="flex-1 flex flex-col justify-between bg-[#121212] relative w-full overflow-hidden">
         
         {/* Streamlined Top Chat Info Header */}
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-4 sm:px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
@@ -542,9 +613,8 @@ export const SecureChatView: React.FC = () => {
                   </div>
                 </div>
 
-                <div>{renderMessageContent(msg.text)}</div>
+                <div>{renderMessageContent(msg.text, msg.id)}</div>
 
-                {/* Message Action Bar (Copy) */}
                 {msg.sender === 'ai' && !msg.isError && (
                   <div className="mt-2 pt-2 border-t border-[#333333]/50 flex items-center justify-end">
                     <button
@@ -592,7 +662,9 @@ export const SecureChatView: React.FC = () => {
               </div>
               <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">Anacleto AI is analyzing file & generating response...</span>
+                <span className="text-xs text-[#BDBDBD]">
+                  {webSearchEnabled ? 'Searching real-time web & analyzing results...' : deepReasoningEnabled ? 'Performing deep multi-step reasoning...' : 'Anacleto AI is thinking...'}
+                </span>
               </div>
             </div>
           )}
@@ -602,6 +674,34 @@ export const SecureChatView: React.FC = () => {
 
         {/* INPUT CONTAINER */}
         <div className="p-4 sm:p-6 bg-[#121212] border-t border-[#333333] max-w-4xl w-full mx-auto">
+          
+          {/* Capability Toggle Action Bar */}
+          <div className="flex items-center gap-2 mb-3 overflow-x-auto">
+            <button
+              onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                webSearchEnabled 
+                  ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
+                  : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Web Search</span>
+            </button>
+
+            <button
+              onClick={() => setDeepReasoningEnabled(!deepReasoningEnabled)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                deepReasoningEnabled 
+                  ? 'bg-[#FFD54F] text-black border border-[#FFD54F] shadow-sm' 
+                  : 'bg-[#1A1A1A] text-[#BDBDBD] border border-[#333333] hover:text-white hover:border-[#FFD54F]/50'
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5" />
+              <span>Deep Reasoning</span>
+            </button>
+          </div>
+
           {selectedFile && (
             <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#1A1A1A] border border-[#FFD54F]/40 text-xs text-[#FFD54F] font-mono shadow-md">
               <FileText className="w-3.5 h-3.5 text-[#FFD54F]" />
@@ -632,7 +732,7 @@ export const SecureChatView: React.FC = () => {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="absolute left-3 p-2 rounded-lg text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#1A1A1A] transition-colors"
-              title="Attach File (PDF, TXT, CSV, Code, JSON)"
+              title="Attach File (PDF, TXT, CSV, Code, Images)"
             >
               <Paperclip className="w-5 h-5" />
             </button>
@@ -647,7 +747,15 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder={selectedFile ? `Ask about ${selectedFile.name}...` : "Ask Anacleto AI..."}
+              placeholder={
+                webSearchEnabled 
+                  ? "Ask anything with Live Web Search..." 
+                  : deepReasoningEnabled 
+                  ? "Ask complex reasoning or math problem..." 
+                  : selectedFile 
+                  ? `Ask about ${selectedFile.name}...` 
+                  : "Ask Anacleto AI..."
+              }
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -663,13 +771,25 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Document Analysis Active (PDF, Code, CSV, TXT).
+              Sovereign Enterprise Engine.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>
         </div>
 
       </main>
+
+      {/* Side-by-Side Artifact Workspace Canvas */}
+      {activeArtifact && (
+        <ArtifactCanvas
+          isOpen={canvasOpen}
+          onClose={() => setCanvasOpen(false)}
+          title={activeArtifact.title}
+          type={activeArtifact.type}
+          content={activeArtifact.content}
+        />
+      )}
+
     </div>
   );
 };

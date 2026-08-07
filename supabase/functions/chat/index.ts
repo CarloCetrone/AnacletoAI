@@ -14,13 +14,44 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Simulated Real-Time Web Search Tool (DuckDuckGo / Tavily fallback)
+async function performWebSearch(query: string): Promise<string> {
+  try {
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(searchUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+    });
+    
+    if (!res.ok) return "";
+    const htmlText = await res.text();
+    
+    // Extract title & snippet matches
+    const snippets: string[] = [];
+    const regex = /<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g;
+    let match;
+    let count = 0;
+    while ((match = regex.exec(htmlText)) !== null && count < 3) {
+      const cleanSnippet = match[1].replace(/<[^>]+>/g, "").trim();
+      if (cleanSnippet) {
+        snippets.push(`[Source ${count + 1}]: ${cleanSnippet}`);
+        count++;
+      }
+    }
+
+    return snippets.join("\n\n");
+  } catch (e) {
+    console.error("Web Search Error:", e);
+    return "";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { message, history, attachment, fileContent } = await req.json();
+    const { message, history, attachment, fileContent, webSearch, deepReasoning } = await req.json();
 
     if (!message && !fileContent && (!history || history.length === 0)) {
       return new Response(
@@ -29,12 +60,17 @@ serve(async (req) => {
       );
     }
 
-    const apiMessages = [
-      {
-        role: "system",
-        content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses. When a user attaches a document or code file, thoroughly analyze the file text provided within the delimiters and reference specific data lines in your answer.",
-      },
-    ];
+    let systemPrompt = "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses.";
+
+    if (deepReasoning) {
+      systemPrompt += " Activate deep step-by-step reasoning. Output your internal chain-of-thought enclosed inside `<think>`...`</think>` tags before giving your final answer.";
+    }
+
+    if (fileContent) {
+      systemPrompt += " When analyzing attached files, reference specific data lines and code blocks in your answer.";
+    }
+
+    const apiMessages = [{ role: "system", content: systemPrompt }];
 
     if (Array.isArray(history)) {
       for (const item of history) {
@@ -47,11 +83,19 @@ serve(async (req) => {
     }
 
     let userContent = message || "";
-    
-    // Inject full extracted document text into user context
+
+    // Execute Live Web Search if enabled by user
+    if (webSearch && userContent) {
+      const webResults = await performWebSearch(userContent);
+      if (webResults) {
+        userContent = `[LIVE WEB SEARCH RESULTS FOR: "${userContent}"]\n${webResults}\n\nUser Question: ${userContent}`;
+      }
+    }
+
+    // Inject document text context
     if (fileContent) {
       userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
-    } else if (attachment) {
+    } else if (attachment && !webSearch) {
       userContent = `[Attached File: ${attachment}]\n${userContent}`;
     }
 
@@ -66,8 +110,8 @@ serve(async (req) => {
       input: {
         messages: apiMessages,
         sampling_params: {
-          max_tokens: 1536,
-          temperature: 0.6,
+          max_tokens: deepReasoning ? 2048 : 1536,
+          temperature: deepReasoning ? 0.4 : 0.6,
         },
       },
     };
@@ -121,7 +165,7 @@ serve(async (req) => {
       }
     }
 
-    // 2. Async Stream Fallback
+    // 2. Async Fallback
     const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
       method: "POST",
       headers: {
@@ -133,8 +177,8 @@ serve(async (req) => {
           messages: apiMessages,
           stream: true,
           sampling_params: {
-            max_tokens: 1536,
-            temperature: 0.6,
+            max_tokens: deepReasoning ? 2048 : 1536,
+            temperature: deepReasoning ? 0.4 : 0.6,
           },
         },
       }),
