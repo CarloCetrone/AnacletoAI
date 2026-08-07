@@ -47,7 +47,6 @@ export const SecureChatView: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
-  // Clean initial sessions array (no pre-populated mock titles)
   const [sessions, setSessions] = useState<ChatSession[]>([
     {
       id: 'session-1',
@@ -88,6 +87,42 @@ export const SecureChatView: React.FC = () => {
     navigator.clipboard.writeText(text);
     setCopiedMsgId(msgId);
     setTimeout(() => setCopiedMsgId(null), 2000);
+  };
+
+  // Typewriter streaming effect helper
+  const animateStreamResponse = (
+    aiMsgId: string, 
+    fullText: string, 
+    sessionId: string,
+    modelUsed: string,
+    latency: string
+  ) => {
+    let currentIdx = 0;
+    const chunkSize = 3; // Number of characters per tick
+    const speed = 15; // Milliseconds per tick
+
+    const interval = setInterval(() => {
+      currentIdx += chunkSize;
+      const currentText = fullText.slice(0, currentIdx);
+
+      setSessions((prevSessions) =>
+        prevSessions.map((sess) => {
+          if (sess.id === sessionId) {
+            return {
+              ...sess,
+              messages: sess.messages.map((m) =>
+                m.id === aiMsgId ? { ...m, text: currentText, modelUsed, latency } : m
+              )
+            };
+          }
+          return sess;
+        })
+      );
+
+      if (currentIdx >= fullText.length) {
+        clearInterval(interval);
+      }
+    }, speed);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -184,27 +219,49 @@ export const SecureChatView: React.FC = () => {
         }
       }
 
-      const aiResponseMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: aiReplyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed,
-        latency,
-        isError: isErr
-      };
+      const aiMsgId = (Date.now() + 1).toString();
 
-      setSessions((prevSessions) =>
-        prevSessions.map((sess) => {
-          if (sess.id === currentSessionId) {
-            return {
-              ...sess,
-              messages: [...sess.messages, aiResponseMsg]
-            };
-          }
-          return sess;
-        })
-      );
+      if (isErr) {
+        const errorMsg: ChatMessage = {
+          id: aiMsgId,
+          sender: 'ai',
+          text: aiReplyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed,
+          latency,
+          isError: true
+        };
+        setSessions((prevSessions) =>
+          prevSessions.map((sess) => {
+            if (sess.id === currentSessionId) {
+              return { ...sess, messages: [...sess.messages, errorMsg] };
+            }
+            return sess;
+          })
+        );
+      } else {
+        // Create initial placeholder message for real-time typewriter streaming
+        const initialAiMsg: ChatMessage = {
+          id: aiMsgId,
+          sender: 'ai',
+          text: '',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed,
+          latency
+        };
+
+        setSessions((prevSessions) =>
+          prevSessions.map((sess) => {
+            if (sess.id === currentSessionId) {
+              return { ...sess, messages: [...sess.messages, initialAiMsg] };
+            }
+            return sess;
+          })
+        );
+
+        // Start typewriter streaming animation
+        animateStreamResponse(aiMsgId, aiReplyText, currentSessionId, modelUsed, latency);
+      }
     } catch (err: any) {
       console.error('Chat API Error:', err);
       const errorMsg: ChatMessage = {
@@ -261,7 +318,6 @@ export const SecureChatView: React.FC = () => {
     setSidebarOpen(false);
   };
 
-  // Simple Markdown Code Block Formatting Helper
   const renderMessageContent = (text: string) => {
     const parts = text.split(/(```[\s\S]*?```)/g);
 
