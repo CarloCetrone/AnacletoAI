@@ -3,7 +3,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const RUNPOD_API_KEY = Deno.env.get("RUNPOD_API_KEY") || "";
+// API Keys for individual pods (with fallbacks to primary RUNPOD_API_KEY)
+const RUNPOD_API_KEY_32B = Deno.env.get("RUNPOD_API_KEY_32B") || Deno.env.get("RUNPOD_API_KEY") || "";
+const RUNPOD_API_KEY_7B = Deno.env.get("RUNPOD_API_KEY_7B") || Deno.env.get("RUNPOD_API_KEY") || "";
 
 // RunPod Endpoint IDs
 const ENDPOINT_32B = Deno.env.get("RUNPOD_ENDPOINT_ID_32B") || Deno.env.get("RUNPOD_ENDPOINT_ID") || "ywhi6e5t9yof38";
@@ -94,8 +96,8 @@ function extractOutputText(outputData: any): string {
   return "";
 }
 
-// Robust Helper to execute LLM API call for dynamic endpoint
-async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
+// Robust Helper to execute LLM API call for dynamic endpoint & specific API key
+async function invokeModel(endpointId: string, apiKey: string, messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
   const runUrl = `https://api.runpod.ai/v2/${endpointId}/runsync`;
   const asyncUrl = `https://api.runpod.ai/v2/${endpointId}/run`;
   const streamUrlBase = `https://api.runpod.ai/v2/${endpointId}/stream`;
@@ -112,7 +114,7 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
     const res = await fetch(runUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -131,7 +133,7 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
     const asyncRes = await fetch(asyncUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -153,7 +155,7 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
         while (!isCompleted && retries < 40) {
           retries++;
           const streamRes = await fetch(`${streamUrlBase}/${jobId}`, {
-            headers: { "Authorization": `Bearer ${RUNPOD_API_KEY}` }
+            headers: { "Authorization": `Bearer ${apiKey}` }
           });
           if (streamRes.ok) {
             const streamData = await streamRes.json();
@@ -193,9 +195,10 @@ serve(async (req) => {
       );
     }
 
-    // Determine target RunPod Endpoint & Model Display Name
+    // Determine target RunPod Endpoint, API Key, and Model Display Name
     const is7b = model === "anacleto-7b" || model === "7b";
     const targetEndpoint = is7b ? ENDPOINT_7B : ENDPOINT_32B;
+    const targetApiKey = is7b ? RUNPOD_API_KEY_7B : RUNPOD_API_KEY_32B;
     const modelDisplayName = is7b ? "Anacleto-7B-Turbo" : "Anacleto-32B-Omni";
 
     const now = new Date();
@@ -247,7 +250,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
     let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
     // STEP 1: Turn 1 - Execute First Model Turn
-    let firstTurnOutput = await invokeModel(targetEndpoint, apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.6);
+    let firstTurnOutput = await invokeModel(targetEndpoint, targetApiKey, apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.6);
 
     // Check if the agent decided to issue a tool_call
     const toolCallMatch = firstTurnOutput.match(/```tool_call\s*\n?\s*web_search\("([^"]+)"\)\s*\n?\s*```/i) 
@@ -271,7 +274,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
       ];
 
       // STEP 3: Turn 2 - Model generates final response informed by tool output
-      let finalAgentResponse = await invokeModel(targetEndpoint, turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.7);
+      let finalAgentResponse = await invokeModel(targetEndpoint, targetApiKey, turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.7);
 
       const latencyMs = Date.now() - startTime;
       return new Response(
