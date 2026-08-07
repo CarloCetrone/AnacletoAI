@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Web Search Tool (DuckDuckGo HTML Engine)
+// High-Precision Real-Time Web Search Tool (DuckDuckGo Engine)
 async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -51,7 +51,7 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
   }
 }
 
-// Helper to execute LLM API call synchronously
+// Robust Helper to execute LLM API call with Sync & Async Stream Fallback
 async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
   const payload = {
     input: {
@@ -60,31 +60,94 @@ async function invokeModel(messages: any[], maxTokens = 1536, temperature = 0.5)
     }
   };
 
-  const res = await fetch(RUNPOD_RUN_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${RUNPOD_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  try {
+    // 1. Try Sync RunPod Endpoint
+    const res = await fetch(RUNPOD_RUN_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
 
-  if (res.ok) {
-    const data = await res.json();
-    if (data.status === "COMPLETED" && data.output) {
-      let outputText = "";
-      if (typeof data.output === "string") {
-        outputText = data.output;
-      } else if (Array.isArray(data.output)) {
-        for (const item of data.output) {
-          if (typeof item === "string") outputText += item;
-          else if (item.choices?.[0]?.message?.content) outputText += item.choices[0].message.content;
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === "COMPLETED" && data.output) {
+        let outputText = "";
+        if (typeof data.output === "string") {
+          outputText = data.output;
+        } else if (Array.isArray(data.output)) {
+          for (const item of data.output) {
+            if (typeof item === "string") outputText += item;
+            else if (item.choices?.[0]?.message?.content) outputText += item.choices[0].message.content;
+            else if (item.choices?.[0]?.tokens) outputText += item.choices[0].tokens.join("");
+          }
+        } else if (data.output.choices?.[0]?.message?.content) {
+          outputText = data.output.choices[0].message.content;
+        } else if (data.output.choices?.[0]?.tokens) {
+          outputText = data.output.choices[0].tokens.join("");
         }
-      } else if (data.output.choices?.[0]?.message?.content) {
-        outputText = data.output.choices[0].message.content;
+
+        if (outputText.trim()) return outputText;
       }
-      return outputText;
     }
+
+    // 2. Fallback to Async Stream Polling Endpoint
+    const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RUNPOD_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        input: {
+          messages,
+          stream: true,
+          sampling_params: { max_tokens: maxTokens, temperature }
+        }
+      })
+    });
+
+    if (asyncRes.ok) {
+      const asyncData = await asyncRes.json();
+      const jobId = asyncData.id;
+      if (jobId) {
+        let collectedText = "";
+        let isCompleted = false;
+        let retries = 0;
+        while (!isCompleted && retries < 40) {
+          retries++;
+          const streamRes = await fetch(`${RUNPOD_STREAM_URL_BASE}/${jobId}`, {
+            headers: { "Authorization": `Bearer ${RUNPOD_API_KEY}` }
+          });
+          if (streamRes.ok) {
+            const streamData = await streamRes.json();
+            const streamItems = streamData.stream || [];
+            for (const item of streamItems) {
+              const output = item.output;
+              if (typeof output === "string") collectedText += output;
+              else if (Array.isArray(output)) {
+                for (const entry of output) {
+                  if (entry.choices?.[0]?.tokens) collectedText += entry.choices[0].tokens.join("");
+                  else if (typeof entry === "string") collectedText += entry;
+                }
+              } else if (output?.choices?.[0]?.tokens) {
+                collectedText += output.choices[0].tokens.join("");
+              }
+            }
+            if (streamData.status === "COMPLETED" || streamData.status === "FAILED") {
+              isCompleted = true;
+              break;
+            }
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        if (collectedText.trim()) return collectedText;
+      }
+    }
+  } catch (e) {
+    console.error("invokeModel error:", e);
   }
 
   return "";
@@ -181,7 +244,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
       return new Response(
         JSON.stringify({
           status: "success",
-          response: finalAgentResponse,
+          response: finalAgentResponse || "Processed request based on search results.",
           searchSummary: `[Agent Tool Call]: web_search("${searchQuery}")\n\n${searchData.searchSummary}`,
           sources: searchData.sources,
           model: "Anacleto-120B-Omni",
@@ -191,12 +254,14 @@ If no search tool call is needed, answer the user directly using your knowledge 
       );
     }
 
-    // If no tool call was issued, return direct first-turn answer
+    // If no tool call was issued, return direct first-turn answer (cleaning any raw tool_call tags)
+    const cleanOutput = firstTurnOutput.replace(/```tool_call[\s\S]*?```/g, "").trim() || "I am Anacleto AI. How can I assist you with your project today?";
     const totalLatency = Date.now() - startTime;
+
     return new Response(
       JSON.stringify({
         status: "success",
-        response: firstTurnOutput || "Processed request.",
+        response: cleanOutput,
         searchSummary: "",
         sources: [],
         model: "Anacleto-120B-Omni",
