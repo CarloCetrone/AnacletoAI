@@ -7,11 +7,12 @@ import { HomeView } from '@/components/HomeView';
 import { LoginView } from '@/components/LoginView';
 import { SecureChatView } from '@/components/SecureChatView';
 import { ContactView } from '@/components/ContactView';
+import { ApiPlaygroundView } from '@/components/ApiPlaygroundView';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 
 function MainAppContent() {
-  const [currentView, setCurrentView] = useState<'home' | 'login' | 'chat' | 'contact'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'login' | 'chat' | 'contact' | 'api-docs'>('home');
   const { user } = useAuth();
 
   const renderView = () => {
@@ -20,8 +21,9 @@ function MainAppContent() {
         return <HomeView onNavigate={(view) => setCurrentView(view as any)} />;
       case 'login':
         return <LoginView onNavigate={(view) => setCurrentView(view as any)} />;
+      case 'api-docs':
+        return <ApiPlaygroundView />;
       case 'chat':
-        // Protected Route Check
         if (!user) {
           return (
             <div className="min-h-[80vh] flex items-center justify-center p-4">

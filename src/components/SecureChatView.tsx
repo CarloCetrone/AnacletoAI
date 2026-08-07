@@ -9,11 +9,14 @@ import {
   User, 
   ChevronRight,
   Sparkles,
-  Code2,
   Lock,
   Loader2,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check,
+  PanelLeftOpen,
+  PanelLeftClose
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 
@@ -41,33 +44,22 @@ interface ChatSession {
 
 export const SecureChatView: React.FC = () => {
   const isConfigured = isSupabaseConfigured();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
+  // Clean initial sessions array (no pre-populated mock titles)
   const [sessions, setSessions] = useState<ChatSession[]>([
     {
       id: 'session-1',
-      title: 'Legal Contract Analysis',
+      title: 'New Conversation',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       messages: [
         {
           id: 'welcome-msg',
           sender: 'ai',
-          text: 'Welcome to Anacleto AI Console. Connected to RunPod Serverless frontier model (Anacleto-120B-Omni). How can I assist with your research, APIs, agents, or document analysis today?',
+          text: 'Welcome to Anacleto AI. Connected to Anacleto-120B-Omni foundation model. How can I help you today?',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
-        }
-      ]
-    },
-    {
-      id: 'session-2',
-      title: 'Q3 Financial Report Summary',
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      messages: [
-        {
-          id: 'welcome-msg-2',
-          sender: 'ai',
-          text: 'Session connected for Q3 Financial Analysis. Send your prompt or upload financial spreadsheets.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
+          modelUsed: 'Anacleto-120B-Omni'
         }
       ]
     }
@@ -92,6 +84,12 @@ export const SecureChatView: React.FC = () => {
     scrollToBottom();
   }, [activeSessionId, messages, loading]);
 
+  const copyToClipboard = (text: string, msgId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMsgId(msgId);
+    setTimeout(() => setCopiedMsgId(null), 2000);
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputMessage.trim() && !selectedFile) || loading) return;
@@ -108,19 +106,6 @@ export const SecureChatView: React.FC = () => {
       attachments: attachedName ? [attachedName] : undefined
     };
 
-    const aiMsgId = (Date.now() + 1).toString();
-    const startTime = Date.now();
-
-    // Create a single AI response message placeholder for real-time streaming
-    const aiPlaceholderMsg: ChatMessage = {
-      id: aiMsgId,
-      sender: 'ai',
-      text: '',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)',
-      latency: 'Streaming...'
-    };
-
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
         if (sess.id === currentSessionId) {
@@ -131,7 +116,7 @@ export const SecureChatView: React.FC = () => {
           return {
             ...sess,
             title: newTitle,
-            messages: [...sess.messages, userMessage, aiPlaceholderMsg]
+            messages: [...sess.messages, userMessage]
           };
         }
         return sess;
@@ -149,130 +134,95 @@ export const SecureChatView: React.FC = () => {
         id: m.id
       }));
 
-      // Stream directly from Supabase Edge Function
-      const response = await fetch(SUPABASE_FUNCTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          message: userMsgText,
-          attachment: attachedName || '',
-          history: historyContext
-        }),
-      });
+      let aiReplyText = '';
+      let isErr = false;
+      let modelUsed = 'Anacleto-120B-Omni';
+      let latency = '0ms';
 
-      if (response.ok && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedText = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunkText = decoder.decode(value, { stream: true });
-          const lines = chunkText.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.replace('data: ', '').trim();
-              if (dataStr === '[DONE]') {
-                break;
-              }
-
-              try {
-                const parsed = JSON.parse(dataStr);
-                if (parsed.token) {
-                  accumulatedText += parsed.token;
-                  
-                  // Update single active AI message in state in real-time
-                  setSessions((prevSessions) =>
-                    prevSessions.map((sess) => {
-                      if (sess.id === currentSessionId) {
-                        return {
-                          ...sess,
-                          messages: sess.messages.map((m) =>
-                            m.id === aiMsgId ? { ...m, text: accumulatedText } : m
-                          )
-                        };
-                      }
-                      return sess;
-                    })
-                  );
-                }
-              } catch {
-                // Ignore parsing artifacts
-              }
-            }
-          }
-        }
-
-        const totalLatency = `${Date.now() - startTime}ms`;
-        setSessions((prevSessions) =>
-          prevSessions.map((sess) => {
-            if (sess.id === currentSessionId) {
-              return {
-                ...sess,
-                messages: sess.messages.map((m) =>
-                  m.id === aiMsgId ? { ...m, latency: totalLatency } : m
-                )
-              };
-            }
-            return sess;
+      if (isConfigured) {
+        const res = await fetch(SUPABASE_FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            message: userMsgText,
+            attachment: attachedName || '',
+            history: historyContext
           })
-        );
+        });
+
+        const data = await res.json();
+        if (res.ok && data.response) {
+          aiReplyText = data.response;
+          modelUsed = data.model || 'Anacleto-120B-Omni';
+          latency = data.latency || '25ms';
+        } else {
+          aiReplyText = data.error || 'Serverless endpoint error.';
+          isErr = true;
+        }
       } else {
-        // Fallback to Google Apps Script
         const queryParams = new URLSearchParams({
           message: userMsgText,
           attachment: attachedName || '',
           history: JSON.stringify(historyContext)
         }).toString();
 
-        const res = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
-        const scriptData = await res.json();
-        const totalLatency = `${Date.now() - startTime}ms`;
+        const response = await fetch(`${CHAT_SCRIPT_URL}?${queryParams}`);
+        const data = await response.json();
 
-        setSessions((prevSessions) =>
-          prevSessions.map((sess) => {
-            if (sess.id === currentSessionId) {
-              return {
-                ...sess,
-                messages: sess.messages.map((m) =>
-                  m.id === aiMsgId
-                    ? {
-                        ...m,
-                        text: scriptData.response || 'No response received from model endpoint.',
-                        latency: totalLatency,
-                        isError: !scriptData.response
-                      }
-                    : m
-                )
-              };
-            }
-            return sess;
-          })
-        );
+        if (data && data.status === 'success' && data.response) {
+          aiReplyText = data.response;
+          latency = data.latency || '35ms';
+        } else if (data && data.response) {
+          aiReplyText = `API Error: ${data.response}`;
+          isErr = true;
+        } else {
+          aiReplyText = 'No response received from endpoint.';
+          isErr = true;
+        }
       }
-    } catch (err) {
-      console.error('Chat Streaming Error:', err);
+
+      const aiResponseMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: aiReplyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        modelUsed,
+        latency,
+        isError: isErr
+      };
+
       setSessions((prevSessions) =>
         prevSessions.map((sess) => {
           if (sess.id === currentSessionId) {
             return {
               ...sess,
-              messages: sess.messages.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      text: `Streaming Error: Unable to complete RunPod stream. (${err})`,
-                      isError: true
-                    }
-                  : m
-              )
+              messages: [...sess.messages, aiResponseMsg]
+            };
+          }
+          return sess;
+        })
+      );
+    } catch (err: any) {
+      console.error('Chat API Error:', err);
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: `Network Error: Unable to connect to backend endpoint. (${err.message || err})`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        modelUsed: 'Anacleto-120B-Omni',
+        latency: '0ms',
+        isError: true
+      };
+
+      setSessions((prevSessions) =>
+        prevSessions.map((sess) => {
+          if (sess.id === currentSessionId) {
+            return {
+              ...sess,
+              messages: [...sess.messages, errorMsg]
             };
           }
           return sess;
@@ -293,28 +243,85 @@ export const SecureChatView: React.FC = () => {
     const newSessionId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newSessionId,
-      title: 'New Session',
+      title: 'New Conversation',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       messages: [
         {
           id: `welcome-${newSessionId}`,
           sender: 'ai',
-          text: 'Welcome to a new Anacleto AI Session. Connected to RunPod Serverless with real-time token streaming.',
+          text: 'Welcome to a new Anacleto AI Session. How can I assist you?',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-120B-Omni (RunPod Streaming)'
+          modelUsed: 'Anacleto-120B-Omni'
         }
       ]
     };
 
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSessionId);
+    setSidebarOpen(false);
+  };
+
+  // Simple Markdown Code Block Formatting Helper
+  const renderMessageContent = (text: string) => {
+    const parts = text.split(/(```[\s\S]*?```)/g);
+
+    return parts.map((part, idx) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        const firstLineEnd = part.indexOf('\n');
+        const language = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : '';
+        const codeContent = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3) : part.slice(3, -3);
+
+        return (
+          <div key={idx} className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
+            <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
+              <span className="uppercase font-semibold tracking-wider">{language || 'code'}</span>
+              <button
+                onClick={() => copyToClipboard(codeContent, `code-${idx}`)}
+                className="flex items-center gap-1 hover:text-[#FFD54F] transition-colors text-[11px]"
+              >
+                {copiedMsgId === `code-${idx}` ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Code</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed">
+              <code>{codeContent}</code>
+            </pre>
+          </div>
+        );
+      }
+
+      return (
+        <span key={idx} className="whitespace-pre-wrap">
+          {part}
+        </span>
+      );
+    });
   };
 
   return (
-    <div className="pt-16 h-[calc(100vh-64px)] flex overflow-hidden bg-[#121212] text-[#F5F5F5]">
+    <div className="h-[calc(100vh-64px)] flex overflow-hidden bg-[#121212] text-[#F5F5F5] relative">
       
-      {/* LEFT SIDEBAR - SESSIONS LIST */}
-      <aside className="w-64 sm:w-72 bg-[#1A1A1A] border-r border-[#333333] flex flex-col justify-between flex-shrink-0 hidden md:flex">
+      {/* SIDEBAR BACKDROP FOR MOBILE */}
+      {sidebarOpen && (
+        <div 
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
+        />
+      )}
+
+      {/* LEFT SIDEBAR */}
+      <aside className={`w-64 sm:w-72 bg-[#1A1A1A] border-r border-[#333333] flex flex-col justify-between flex-shrink-0 z-40 transition-transform duration-300 md:static fixed inset-y-0 left-0 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}>
         <div className="p-4 space-y-4">
           
           {/* New Chat Button */}
@@ -329,14 +336,17 @@ export const SecureChatView: React.FC = () => {
           {/* Sessions List */}
           <div className="space-y-1">
             <div className="px-3 py-1 text-[11px] font-bold text-[#BDBDBD] uppercase tracking-wider">
-              Active Sessions
+              Conversations
             </div>
             {sessions.map((sess) => {
               const isActive = sess.id === activeSessionId;
               return (
                 <div
                   key={sess.id}
-                  onClick={() => setActiveSessionId(sess.id)}
+                  onClick={() => {
+                    setActiveSessionId(sess.id);
+                    setSidebarOpen(false);
+                  }}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
                     isActive
                       ? 'bg-[#252525] text-[#FFD54F] border-l-2 border-[#FFD54F]'
@@ -354,34 +364,42 @@ export const SecureChatView: React.FC = () => {
           </div>
         </div>
 
-        {/* Sidebar Security Footer */}
-        <div className="p-4 border-t border-[#333333] bg-[#121212] text-xs text-[#BDBDBD] space-y-2">
-          <div className="flex items-center gap-2 text-[#FFD54F] font-semibold">
-            <ShieldCheck className="w-4 h-4" />
-            <span>Sovereign Sandbox</span>
+        {/* Minimal Clean Sidebar Footer */}
+        <div className="p-4 border-t border-[#333333] bg-[#121212] text-xs text-[#BDBDBD] flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[#FFD54F] font-medium text-[11px]">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Sovereign Encryption</span>
           </div>
-          <p className="text-[11px] text-[#BDBDBD] leading-tight">
-            Air-gapped deployment node: <span className="font-mono text-[#FFD54F]">eu-de-fra-01</span>
-          </p>
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
         </div>
       </aside>
 
       {/* MAIN CHAT AREA */}
-      <main className="flex-1 flex flex-col justify-between bg-[#121212] relative">
+      <main className="flex-1 flex flex-col justify-between bg-[#121212] relative w-full">
         
-        {/* Top Chat Info Header */}
-        <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
-            <span className="font-semibold text-[#F5F5F5]">Active Session: {activeSession.title}</span>
-            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2 py-0.5 rounded text-[10px] font-mono">RunPod Streaming</span>
+        {/* Streamlined Top Chat Info Header */}
+        <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-4 sm:px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
+          <div className="flex items-center gap-3">
+            {/* Mobile Sidebar Toggle Button */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1 rounded-md text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] md:hidden transition-colors"
+              title="Toggle Conversations"
+            >
+              {sidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#FFD54F] animate-pulse"></span>
+              <span className="font-semibold text-[#F5F5F5] truncate max-w-[200px] sm:max-w-xs">
+                {activeSession.title}
+              </span>
+            </div>
           </div>
-          <div className="hidden sm:flex items-center gap-4">
-            <span className="flex items-center gap-1 text-[#BDBDBD]">
-              <Code2 className="w-3 h-3 text-[#FFD54F]" /> Multi-Turn Memory
-            </span>
-            <span className="flex items-center gap-1 text-[#BDBDBD]">
-              <Lock className="w-3 h-3 text-[#FFD54F]" /> 256-bit AES
+
+          <div className="flex items-center gap-3">
+            <span className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/30 px-2.5 py-0.5 rounded text-[10px] font-mono">
+              Anacleto-120B
             </span>
           </div>
         </div>
@@ -406,7 +424,7 @@ export const SecureChatView: React.FC = () => {
               )}
 
               <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-sm leading-relaxed ${
+                className={`group relative max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-sm leading-relaxed ${
                   msg.sender === 'user'
                     ? 'bg-[#FFD54F] text-[#000000] font-semibold rounded-tr-none shadow-lg shadow-[#FFD54F]/10'
                     : msg.isError
@@ -414,9 +432,9 @@ export const SecureChatView: React.FC = () => {
                     : 'bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-tl-none shadow-md'
                 }`}
               >
-                <div className="flex items-center justify-between gap-4 mb-1.5 text-[11px] opacity-70 border-b border-current/10 pb-1">
+                <div className="flex items-center justify-between gap-4 mb-2 text-[11px] opacity-70 border-b border-current/10 pb-1">
                   <span className="font-semibold flex items-center gap-1">
-                    {msg.sender === 'user' ? 'You (Enterprise Developer)' : 'Anacleto AI Model'}
+                    {msg.sender === 'user' ? 'You' : 'Anacleto AI'}
                   </span>
                   <div className="flex items-center gap-2">
                     {msg.latency && (
@@ -429,20 +447,28 @@ export const SecureChatView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="whitespace-pre-wrap">
-                  {msg.text ? (
-                    msg.text
-                  ) : msg.sender === 'ai' && !msg.isError ? (
-                    <div className="flex items-center gap-2 text-xs text-[#BDBDBD]">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FFD54F]" />
-                      <span>Thinking...</span>
-                    </div>
-                  ) : null}
-                </div>
+                <div>{renderMessageContent(msg.text)}</div>
 
-                {msg.modelUsed && msg.sender === 'ai' && (
-                  <div className="mt-3 pt-2 border-t border-[#333333] flex items-center justify-between text-[11px] font-mono text-[#FFD54F]/80">
-                    <span>Engine: {msg.modelUsed}</span>
+                {/* Message Action Bar (Copy) */}
+                {msg.sender === 'ai' && !msg.isError && (
+                  <div className="mt-2 pt-2 border-t border-[#333333]/50 flex items-center justify-end">
+                    <button
+                      onClick={() => copyToClipboard(msg.text, msg.id)}
+                      className="text-xs text-[#BDBDBD] hover:text-[#FFD54F] transition-colors flex items-center gap-1"
+                      title="Copy response"
+                    >
+                      {copiedMsgId === msg.id ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span className="text-emerald-400 text-[10px]">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span className="text-[10px]">Copy</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 )}
 
@@ -461,6 +487,20 @@ export const SecureChatView: React.FC = () => {
               )}
             </div>
           ))}
+
+          {loading && (
+            <div className="flex gap-3 sm:gap-4 justify-start">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#FFD54F] p-0.5 flex-shrink-0">
+                <div className="w-full h-full bg-[#121212] rounded-[10px] flex items-center justify-center text-[#FFD54F]">
+                  <Bot className="w-5 h-5 text-[#FFD54F]" />
+                </div>
+              </div>
+              <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
+                <span className="text-xs text-[#BDBDBD]">Anacleto AI is thinking...</span>
+              </div>
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -492,7 +532,7 @@ export const SecureChatView: React.FC = () => {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="absolute left-3 p-2 rounded-lg text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#1A1A1A] transition-colors"
-              title="Attach File / Codebase"
+              title="Attach File"
             >
               <Paperclip className="w-5 h-5" />
             </button>
@@ -507,7 +547,7 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder={`Message ${activeSession.title}...`}
+              placeholder="Ask Anacleto AI..."
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -523,7 +563,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              RunPod Token-by-Token SSE Stream Active.
+              Sovereign Private Infrastructure.
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Cpu, ArrowRight, CheckCircle2, Zap, Code2, Bot, Layers, FlaskConical } from 'lucide-react';
+import { Shield, Cpu, ArrowRight, CheckCircle2, Zap, Code2, Bot, Layers, FlaskConical, Building, Award, Check } from 'lucide-react';
 
 interface HomeViewProps {
   onNavigate: (view: string) => void;
@@ -72,6 +72,31 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             <div className="flex items-center justify-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-[#FFD54F]" />
               <span>Sovereign Private Deployment</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ENTERPRISE MARQUEE */}
+        <div className="py-8 border-y border-[#333333] my-8 overflow-hidden bg-[#121212]/50">
+          <p className="text-center text-xs font-mono uppercase tracking-widest text-[#666666] mb-6">
+            Engineered for High-Security Enterprise & EU Research Institutions
+          </p>
+          <div className="flex justify-center flex-wrap gap-8 sm:gap-16 opacity-70 grayscale hover:grayscale-0 transition-all duration-500 text-xs font-mono text-[#BDBDBD]">
+            <div className="flex items-center gap-2">
+              <Building className="w-4 h-4 text-[#FFD54F]" />
+              <span>FINANCIAL SERVICES</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Award className="w-4 h-4 text-[#FFD54F]" />
+              <span>LEGAL TECH LABS</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#FFD54F]" />
+              <span>DEFENSE & HEALTHCARE</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-[#FFD54F]" />
+              <span>SOVEREIGN CLOUD INFRA</span>
             </div>
           </div>
         </div>
@@ -155,6 +180,48 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
               </p>
             </div>
 
+          </div>
+        </div>
+
+        {/* COMPARATIVE SOVEREIGN MATRIX */}
+        <div className="my-16 bg-[#1A1A1A] border border-[#333333] rounded-2xl p-8">
+          <div className="text-center max-w-xl mx-auto mb-8">
+            <h3 className="text-xl font-bold text-[#F5F5F5] uppercase">Anacleto Sovereign AI vs Public Cloud APIs</h3>
+            <p className="text-xs text-[#BDBDBD] mt-1">Comparing enterprise data safety, compliance, and inference independence.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm text-[#BDBDBD]">
+              <thead className="bg-[#121212] text-[#FFD54F] font-mono uppercase text-[11px] border-b border-[#333333]">
+                <tr>
+                  <th className="p-4">Feature</th>
+                  <th className="p-4">Anacleto Sovereign AI</th>
+                  <th className="p-4">Public Cloud APIs (US Providers)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#252525]">
+                <tr>
+                  <td className="p-4 font-semibold text-white">Data Residency</td>
+                  <td className="p-4 text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" /> 100% On-Prem / EU Frankfurt</td>
+                  <td className="p-4 text-red-400">US Jurisdiction / Global Multi-region</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-semibold text-white">EU AI Act Readiness</td>
+                  <td className="p-4 text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" /> Native Compliance Ready</td>
+                  <td className="p-4 text-amber-400">Requires Third-Party Compliance Wrapping</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-semibold text-white">Zero Telemetry / Logging</td>
+                  <td className="p-4 text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" /> Guaranteed Air-Gapped Isolation</td>
+                  <td className="p-4 text-red-400">Subject to Cloud Provider Logging Policy</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-semibold text-white">Custom Domain Fine-Tuning</td>
+                  <td className="p-4 text-emerald-400 flex items-center gap-1.5"><Check className="w-4 h-4" /> Dedicated Private GPU Weights</td>
+                  <td className="p-4 text-amber-400">Shared Multi-Tenant Infrastructure</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
