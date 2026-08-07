@@ -14,12 +14,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Web Search Tool (Wikipedia + DDG HTML Parser)
+// Real-Time Web Search Tool (Only invoked when user explicitly toggles webSearch)
 async function performWebSearch(query: string): Promise<string> {
   try {
     const snippets: string[] = [];
 
-    // 1. Query Wikipedia API for geographic places & factual topics
+    // 1. Query Wikipedia API
     const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
     const wikiRes = await fetch(wikiUrl);
     if (wikiRes.ok) {
@@ -27,11 +27,11 @@ async function performWebSearch(query: string): Promise<string> {
       const results = wikiData.query?.search || [];
       for (let i = 0; i < Math.min(2, results.length); i++) {
         const snippetText = results[i].snippet.replace(/<[^>]+>/g, "").trim();
-        snippets.push(`[Wikipedia Source ${i + 1}: ${results[i].title}]: ${snippetText}`);
+        snippets.push(`[Wikipedia: ${results[i].title}]: ${snippetText}`);
       }
     }
 
-    // 2. Query DuckDuckGo Lite for live web search
+    // 2. Query DuckDuckGo Lite
     const searchUrl = `https://lite.duckduckgo.com/lite/`;
     const bodyParams = new URLSearchParams({ q: query });
     const ddgRes = await fetch(searchUrl, {
@@ -80,23 +80,10 @@ serve(async (req) => {
       );
     }
 
-    const now = new Date();
-    const currentDateStr = now.toISOString().split("T")[0];
-    const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const currentDayOfWeek = now.toLocaleDateString("en-US", { weekday: "long" });
-
-    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today is ${currentDayOfWeek}, ${currentDateStr}, and the current real-time timestamp is ${currentTimeStr} (CEST/UTC+2). Provide concise, highly technical, intelligent, and accurate responses.`;
-
-    if (webSearch) {
-      systemPrompt += " Web Search mode is active. Use the provided web search context to answer current date, real-time news, or geographic search queries accurately.";
-    }
+    let systemPrompt = "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses.";
 
     if (deepReasoning) {
-      systemPrompt += " Activate deep step-by-step reasoning. Output your internal chain-of-thought enclosed inside `<think>`...`</think>` tags before giving your final answer.";
-    }
-
-    if (fileContent) {
-      systemPrompt += " When analyzing attached files, reference specific data lines and code blocks in your answer.";
+      systemPrompt += " Output your step-by-step reasoning inside `<think>`...`</think>` tags before giving your final answer.";
     }
 
     const apiMessages = [{ role: "system", content: systemPrompt }];
@@ -113,24 +100,24 @@ serve(async (req) => {
 
     let userContent = message || "";
 
-    // Execute Live Web Search if enabled OR if prompt asks for places, current date, news, or time
-    const isSearchQuery = webSearch || (userContent && /search|marotta|fano|where|where is|latest|news|weather|who is/i.test(userContent));
+    // ONLY execute Web Search if user explicitly enabled webSearch toggle button in UI
+    if (webSearch && userContent) {
+      const now = new Date();
+      const currentDateStr = now.toISOString().split("T")[0];
+      const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
 
-    if (isSearchQuery && userContent) {
       const webResults = await performWebSearch(userContent);
       if (webResults) {
-        userContent = `[REAL-TIME LIVE SEARCH CONTEXT (Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\nUser Question: ${userContent}`;
+        userContent = `[LIVE WEB SEARCH CONTEXT (Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\nUser Question: ${userContent}`;
       } else {
-        userContent = `[SYSTEM TIME CONTEXT: ${currentDayOfWeek}, ${currentDateStr} at ${currentTimeStr}]\n${userContent}`;
+        userContent = `[SYSTEM CLOCK CONTEXT: Date: ${currentDateStr}, Time: ${currentTimeStr}]\n${userContent}`;
       }
-    } else if (userContent && /time|clock|hour|che ora è/i.test(userContent)) {
-      userContent = `[SYSTEM REAL-TIME TIMESTAMP: ${currentTimeStr} (CEST/UTC+2), Date: ${currentDayOfWeek}, ${currentDateStr}]\nUser Question: ${userContent}`;
     }
 
     // Inject document text context
     if (fileContent) {
       userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
-    } else if (attachment && !isSearchQuery) {
+    } else if (attachment && !webSearch) {
       userContent = `[Attached File: ${attachment}]\n${userContent}`;
     }
 
