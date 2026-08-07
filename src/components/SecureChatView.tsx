@@ -22,7 +22,9 @@ import {
   Brain,
   Layout,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Search,
+  ExternalLink
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
@@ -40,6 +42,8 @@ interface ChatMessage {
   modelUsed?: string;
   latency?: string;
   isError?: boolean;
+  searchSummary?: string;
+  sources?: string[];
 }
 
 interface ChatSession {
@@ -64,6 +68,7 @@ export const SecureChatView: React.FC = () => {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false);
   const [openThinkId, setOpenThinkId] = useState<string | null>(null);
+  const [openSearchId, setOpenSearchId] = useState<string | null>(null);
 
   // Side-by-Side Artifact Canvas State
   const [canvasOpen, setCanvasOpen] = useState(false);
@@ -154,7 +159,9 @@ export const SecureChatView: React.FC = () => {
     fullText: string, 
     sessionId: string,
     modelUsed: string,
-    latency: string
+    latency: string,
+    searchSummary?: string,
+    sources?: string[]
   ) => {
     let currentIdx = 0;
     const chunkSize = 3;
@@ -170,7 +177,7 @@ export const SecureChatView: React.FC = () => {
             return {
               ...sess,
               messages: sess.messages.map((m) =>
-                m.id === aiMsgId ? { ...m, text: currentText, modelUsed, latency } : m
+                m.id === aiMsgId ? { ...m, text: currentText, modelUsed, latency, searchSummary, sources } : m
               )
             };
           }
@@ -234,6 +241,8 @@ export const SecureChatView: React.FC = () => {
       let isErr = false;
       let modelUsed = 'Anacleto-120B-Omni';
       let latency = '0ms';
+      let searchSummary = '';
+      let sources: string[] = [];
 
       if (isConfigured) {
         const res = await fetch(SUPABASE_FUNCTION_URL, {
@@ -257,6 +266,8 @@ export const SecureChatView: React.FC = () => {
           aiReplyText = data.response;
           modelUsed = data.model || 'Anacleto-120B-Omni';
           latency = data.latency || '25ms';
+          searchSummary = data.searchSummary || '';
+          sources = data.sources || [];
         } else {
           aiReplyText = data.response || data.error || 'Serverless endpoint error.';
           isErr = true;
@@ -311,7 +322,9 @@ export const SecureChatView: React.FC = () => {
           text: '',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           modelUsed,
-          latency
+          latency,
+          searchSummary,
+          sources
         };
 
         setSessions((prevSessions) =>
@@ -323,7 +336,7 @@ export const SecureChatView: React.FC = () => {
           })
         );
 
-        animateStreamResponse(aiMsgId, aiReplyText, currentSessionId, modelUsed, latency);
+        animateStreamResponse(aiMsgId, aiReplyText, currentSessionId, modelUsed, latency, searchSummary, sources);
       }
     } catch (err: any) {
       console.error('Chat API Error:', err);
@@ -375,11 +388,12 @@ export const SecureChatView: React.FC = () => {
     setSidebarOpen(false);
   };
 
-  const renderMessageContent = (text: string, msgId: string) => {
+  const renderMessageContent = (msg: ChatMessage) => {
+    const text = msg.text;
+    const msgId = msg.id;
     let mainContent = text;
     let thinkBlock = '';
 
-    // Extract <think> reasoning blocks for Deep Reasoning Mode
     const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
     if (thinkMatch) {
       thinkBlock = thinkMatch[1].trim();
@@ -390,6 +404,31 @@ export const SecureChatView: React.FC = () => {
 
     return (
       <div className="space-y-3">
+        {/* Accordion Web Search Tool Execution Box */}
+        {msg.searchSummary ? (
+          <div className="rounded-lg bg-[#121212] border border-[#FFD54F]/30 text-xs font-mono overflow-hidden my-2">
+            <button
+              onClick={() => setOpenSearchId(openSearchId === msgId ? null : msgId)}
+              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#FFD54F] transition-colors"
+            >
+              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
+                <Globe className="w-3.5 h-3.5" />
+                Web Search Output & Sources ({msg.sources?.length || 0})
+              </span>
+              {openSearchId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {openSearchId === msgId && (
+              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap space-y-2">
+                <div className="text-[11px] text-[#FFD54F] font-semibold">Injected Search Snippets:</div>
+                <div className="text-[11px] font-mono leading-relaxed bg-[#121212] p-2.5 rounded border border-[#252525]">
+                  {msg.searchSummary}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {/* Accordion Reasoning Block */}
         {thinkBlock ? (
           <div className="rounded-lg bg-[#121212] border border-[#333333] text-xs font-mono overflow-hidden my-2">
@@ -613,7 +652,7 @@ export const SecureChatView: React.FC = () => {
                   </div>
                 </div>
 
-                <div>{renderMessageContent(msg.text, msg.id)}</div>
+                <div>{renderMessageContent(msg)}</div>
 
                 {msg.sender === 'ai' && !msg.isError && (
                   <div className="mt-2 pt-2 border-t border-[#333333]/50 flex items-center justify-end">

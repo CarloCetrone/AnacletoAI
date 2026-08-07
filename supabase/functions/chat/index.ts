@@ -15,7 +15,7 @@ const corsHeaders = {
 };
 
 // High-Precision Real-Time Web Search Engine (DuckDuckGo HTML Engine)
-async function performWebSearch(query: string): Promise<string> {
+async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const res = await fetch(searchUrl, {
@@ -26,10 +26,11 @@ async function performWebSearch(query: string): Promise<string> {
       }
     });
 
-    if (!res.ok) return "";
+    if (!res.ok) return { searchSummary: "", sources: [] };
     const htmlText = await res.text();
 
     const snippets: string[] = [];
+    const sources: string[] = [];
     const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
     const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
 
@@ -39,13 +40,14 @@ async function performWebSearch(query: string): Promise<string> {
 
       if (cleanSnippet) {
         snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
+        sources.push(cleanUrl || `Search Result ${i + 1}`);
       }
     }
 
-    return snippets.join("\n\n");
+    return { searchSummary: snippets.join("\n\n"), sources };
   } catch (e) {
     console.error("Web Search Error:", e);
-    return "";
+    return { searchSummary: "", sources: [] };
   }
 }
 
@@ -92,12 +94,13 @@ serve(async (req) => {
 
     let userPromptText = message || "";
     let finalUserMessage = userPromptText;
+    let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
     // 1. Web Search Context Injection
     if (webSearch && userPromptText) {
-      const webResults = await performWebSearch(userPromptText);
-      if (webResults) {
-        finalUserMessage = `[REAL-TIME LIVE WEB SEARCH RESULTS (Current Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${webResults}\n\n[USER QUESTION]: ${userPromptText}\n\n[INSTRUCTION]: Answer the user's question accurately using the live web search results above.`;
+      searchData = await performWebSearch(userPromptText);
+      if (searchData.searchSummary) {
+        finalUserMessage = `[REAL-TIME LIVE WEB SEARCH RESULTS (Current Date: ${currentDateStr}, Time: ${currentTimeStr})]\n${searchData.searchSummary}\n\n[USER QUESTION]: ${userPromptText}\n\n[INSTRUCTION]: Answer the user's question accurately using the live web search results above.`;
       } else {
         finalUserMessage = `[REAL-TIME CLOCK: ${currentDateStr} ${currentTimeStr}]\n\n[USER QUESTION]: ${userPromptText}`;
       }
@@ -163,6 +166,8 @@ serve(async (req) => {
             JSON.stringify({
               status: "success",
               response: textOutput,
+              searchSummary: searchData.searchSummary,
+              sources: searchData.sources,
               model: "Anacleto-120B-Omni",
               latency: `${latencyMs}ms`,
             }),
@@ -256,6 +261,8 @@ serve(async (req) => {
         JSON.stringify({
           status: "success",
           response: collectedText,
+          searchSummary: searchData.searchSummary,
+          sources: searchData.sources,
           model: "Anacleto-120B-Omni",
           latency: `${finalLatency}ms`,
         }),
