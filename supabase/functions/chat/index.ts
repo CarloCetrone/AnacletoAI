@@ -68,6 +68,32 @@ async function performWebSearch(query: string): Promise<{ searchSummary: string;
   }
 }
 
+// Extract clean text from arbitrary vLLM / OpenAI / RunPod output formats
+function extractOutputText(outputData: any): string {
+  if (!outputData) return "";
+  if (typeof outputData === "string") return outputData;
+
+  if (Array.isArray(outputData)) {
+    let combined = "";
+    for (const item of outputData) {
+      combined += extractOutputText(item);
+    }
+    return combined;
+  }
+
+  if (typeof outputData === "object") {
+    if (outputData.text && typeof outputData.text === "string") return outputData.text;
+    if (outputData.content && typeof outputData.content === "string") return outputData.content;
+    if (outputData.choices?.[0]?.message?.content) return outputData.choices[0].message.content;
+    if (outputData.choices?.[0]?.text) return outputData.choices[0].text;
+    if (outputData.choices?.[0]?.tokens) {
+      return Array.isArray(outputData.choices[0].tokens) ? outputData.choices[0].tokens.join("") : String(outputData.choices[0].tokens);
+    }
+  }
+
+  return "";
+}
+
 // Robust Helper to execute LLM API call for dynamic endpoint
 async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536, temperature = 0.5): Promise<string> {
   const runUrl = `https://api.runpod.ai/v2/${endpointId}/runsync`;
@@ -94,23 +120,10 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
 
     if (res.ok) {
       const data = await res.json();
+      console.log(`[RunPod ${endpointId}] Sync Status: ${data.status}`);
       if (data.status === "COMPLETED" && data.output) {
-        let outputText = "";
-        if (typeof data.output === "string") {
-          outputText = data.output;
-        } else if (Array.isArray(data.output)) {
-          for (const item of data.output) {
-            if (typeof item === "string") outputText += item;
-            else if (item.choices?.[0]?.message?.content) outputText += item.choices[0].message.content;
-            else if (item.choices?.[0]?.tokens) outputText += item.choices[0].tokens.join("");
-          }
-        } else if (data.output.choices?.[0]?.message?.content) {
-          outputText = data.output.choices[0].message.content;
-        } else if (data.output.choices?.[0]?.tokens) {
-          outputText = data.output.choices[0].tokens.join("");
-        }
-
-        if (outputText.trim()) return outputText;
+        const text = extractOutputText(data.output);
+        if (text.trim()) return text;
       }
     }
 
@@ -146,16 +159,7 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
             const streamData = await streamRes.json();
             const streamItems = streamData.stream || [];
             for (const item of streamItems) {
-              const output = item.output;
-              if (typeof output === "string") collectedText += output;
-              else if (Array.isArray(output)) {
-                for (const entry of output) {
-                  if (entry.choices?.[0]?.tokens) collectedText += entry.choices[0].tokens.join("");
-                  else if (typeof entry === "string") collectedText += entry;
-                }
-              } else if (output?.choices?.[0]?.tokens) {
-                collectedText += output.choices[0].tokens.join("");
-              }
+              collectedText += extractOutputText(item.output);
             }
             if (streamData.status === "COMPLETED" || streamData.status === "FAILED") {
               isCompleted = true;
@@ -168,7 +172,7 @@ async function invokeModel(endpointId: string, messages: any[], maxTokens = 1536
       }
     }
   } catch (e) {
-    console.error("invokeModel error:", e);
+    console.error(`invokeModel error for ${endpointId}:`, e);
   }
 
   return "";
@@ -199,7 +203,7 @@ serve(async (req) => {
     const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
 
     // Agent System Prompt defining available tools and tool-call syntax
-    let systemPrompt = `You are ${modelDisplayName}, a sovereign enterprise foundation model. Today's current date is ${currentDateStr} and time is ${currentTimeStr} (CEST/UTC+2).`;
+    let systemPrompt = `You are ${modelDisplayName}, a sovereign enterprise foundation model. Today's current date is ${currentDateStr} and time is ${currentTimeStr} (CEST/UTC+2). Provide helpful, detailed, unique, and natural answers to every question.`;
 
     if (webSearch) {
       systemPrompt += `
@@ -243,7 +247,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
     let searchData: { searchSummary: string; sources: string[] } = { searchSummary: "", sources: [] };
 
     // STEP 1: Turn 1 - Execute First Model Turn
-    let firstTurnOutput = await invokeModel(targetEndpoint, apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.5);
+    let firstTurnOutput = await invokeModel(targetEndpoint, apiMessages, deepReasoning ? 2048 : 1024, deepReasoning ? 0.3 : 0.6);
 
     // Check if the agent decided to issue a tool_call
     const toolCallMatch = firstTurnOutput.match(/```tool_call\s*\n?\s*web_search\("([^"]+)"\)\s*\n?\s*```/i) 
@@ -251,6 +255,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
 
     if (webSearch && toolCallMatch) {
       const searchQuery = toolCallMatch[1];
+      console.log(`Agent issued tool call: web_search("${searchQuery}")`);
 
       // STEP 2: Execute Web Search Tool requested by the agent
       searchData = await performWebSearch(searchQuery);
@@ -266,7 +271,7 @@ If no search tool call is needed, answer the user directly using your knowledge 
       ];
 
       // STEP 3: Turn 2 - Model generates final response informed by tool output
-      let finalAgentResponse = await invokeModel(targetEndpoint, turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.6);
+      let finalAgentResponse = await invokeModel(targetEndpoint, turn2Messages, deepReasoning ? 2048 : 1536, deepReasoning ? 0.3 : 0.7);
 
       const latencyMs = Date.now() - startTime;
       return new Response(
@@ -282,14 +287,14 @@ If no search tool call is needed, answer the user directly using your knowledge 
       );
     }
 
-    // If no tool call was issued, return direct first-turn answer
-    const cleanOutput = firstTurnOutput.replace(/```tool_call[\s\S]*?```/g, "").trim() || `I am ${modelDisplayName}. How can I assist you with your project today?`;
+    // If no tool call was issued, return direct first-turn answer (cleaning any raw tool_call tags)
+    const cleanOutput = firstTurnOutput.replace(/```tool_call[\s\S]*?```/g, "").trim();
     const totalLatency = Date.now() - startTime;
 
     return new Response(
       JSON.stringify({
         status: "success",
-        response: cleanOutput,
+        response: cleanOutput || `Hello! I am ${modelDisplayName}. How can I assist you with your project today?`,
         searchSummary: "",
         sources: [],
         model: modelDisplayName,
