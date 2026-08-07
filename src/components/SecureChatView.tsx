@@ -43,12 +43,6 @@ interface ChatSession {
   createdAt: string;
 }
 
-interface AttachedFileData {
-  name: string;
-  size: number;
-  content: string;
-}
-
 export const SecureChatView: React.FC = () => {
   const isConfigured = isSupabaseConfigured();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -97,6 +91,21 @@ export const SecureChatView: React.FC = () => {
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
+  // Helper to extract clean printable text from PDF files (stripping PDF binary metadata)
+  const extractPdfText = (rawPdfString: string): string => {
+    // Extract readable text chunks inside PDF text objects (BT ... ET) or stream blocks
+    const textMatches = rawPdfString.match(/\(([^()]+)\)\s*Tj/g) || rawPdfString.match(/T[dD]\s*\(([^()]+)\)/g);
+    if (textMatches && textMatches.length > 0) {
+      return textMatches
+        .map((m) => m.replace(/^.*\(/, '').replace(/\)\s*T[jdD]$/, ''))
+        .filter((t) => t.trim().length > 2)
+        .join(' ');
+    }
+    // Fallback: strip binary characters and keep printable ASCII text
+    const cleanPrintable = rawPdfString.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ');
+    return cleanPrintable.slice(0, 150000); // Cap to 150,000 characters
+  };
+
   // Extract raw text from selected file using FileReader API
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -105,14 +114,21 @@ export const SecureChatView: React.FC = () => {
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        const text = event.target?.result as string || '';
-        setExtractedFileText(text);
+        const rawContent = (event.target?.result as string) || '';
+        
+        if (file.name.endsWith('.pdf') || file.type.includes('pdf')) {
+          const parsedPdfText = extractPdfText(rawContent);
+          setExtractedFileText(parsedPdfText);
+        } else {
+          // Truncate non-PDF files to max 150,000 chars to avoid payload overflow
+          setExtractedFileText(rawContent.slice(0, 150000));
+        }
       };
+
       reader.onerror = () => {
         setExtractedFileText('');
       };
 
-      // Read text-based files
       reader.readAsText(file);
     }
   };
@@ -225,7 +241,7 @@ export const SecureChatView: React.FC = () => {
           modelUsed = data.model || 'Anacleto-120B-Omni';
           latency = data.latency || '25ms';
         } else {
-          aiReplyText = data.error || 'Serverless endpoint error.';
+          aiReplyText = data.response || data.error || 'Serverless endpoint error.';
           isErr = true;
         }
       } else {
