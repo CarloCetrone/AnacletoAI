@@ -14,27 +14,52 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Simulated Real-Time Web Search Tool (DuckDuckGo / Tavily fallback)
+// Robust Real-Time Web Search Tool (DuckDuckGo Lite API + HTML Scraper)
 async function performWebSearch(query: string): Promise<string> {
   try {
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const searchUrl = `https://lite.duckduckgo.com/lite/`;
+    const bodyParams = new URLSearchParams({ q: query });
+
     const res = await fetch(searchUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      },
+      body: bodyParams.toString()
     });
-    
+
     if (!res.ok) return "";
     const htmlText = await res.text();
-    
-    // Extract title & snippet matches
+
     const snippets: string[] = [];
-    const regex = /<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g;
+    const resultRegex = /<td class="result-snippet">([\s\S]*?)<\/td>/g;
     let match;
     let count = 0;
-    while ((match = regex.exec(htmlText)) !== null && count < 3) {
-      const cleanSnippet = match[1].replace(/<[^>]+>/g, "").trim();
-      if (cleanSnippet) {
-        snippets.push(`[Source ${count + 1}]: ${cleanSnippet}`);
+
+    while ((match = resultRegex.exec(htmlText)) !== null && count < 4) {
+      const cleanText = match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      if (cleanText) {
+        snippets.push(`[Web Source ${count + 1}]: ${cleanText}`);
         count++;
+      }
+    }
+
+    if (snippets.length === 0) {
+      // Fallback API query
+      const fallbackUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+      const fbRes = await fetch(fallbackUrl);
+      if (fbRes.ok) {
+        const fbJson = await fbRes.json();
+        if (fbJson.AbstractText) {
+          snippets.push(`[Web Source 1]: ${fbJson.AbstractText}`);
+        } else if (fbJson.RelatedTopics && fbJson.RelatedTopics.length > 0) {
+          for (let i = 0; i < Math.min(3, fbJson.RelatedTopics.length); i++) {
+            if (fbJson.RelatedTopics[i].Text) {
+              snippets.push(`[Web Source ${i + 1}]: ${fbJson.RelatedTopics[i].Text}`);
+            }
+          }
+        }
       }
     }
 
@@ -60,7 +85,12 @@ serve(async (req) => {
       );
     }
 
-    let systemPrompt = "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses.";
+    const currentDateStr = new Date().toISOString().split("T")[0];
+    let systemPrompt = `You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Today's real-world current date is ${currentDateStr}. Provide concise, highly technical, intelligent, and accurate responses.`;
+
+    if (webSearch) {
+      systemPrompt += " Web Search mode is active. You MUST use the provided web search context to answer current date, real-time news, or external search queries, referencing the sources provided.";
+    }
 
     if (deepReasoning) {
       systemPrompt += " Activate deep step-by-step reasoning. Output your internal chain-of-thought enclosed inside `<think>`...`</think>` tags before giving your final answer.";
@@ -84,18 +114,22 @@ serve(async (req) => {
 
     let userContent = message || "";
 
-    // Execute Live Web Search if enabled by user
-    if (webSearch && userContent) {
+    // Execute Live Web Search if enabled OR if prompt explicitly requests searching
+    const needsSearch = webSearch || (userContent && /search|today|current date|latest|news|weather/i.test(userContent));
+
+    if (needsSearch && userContent) {
       const webResults = await performWebSearch(userContent);
       if (webResults) {
-        userContent = `[LIVE WEB SEARCH RESULTS FOR: "${userContent}"]\n${webResults}\n\nUser Question: ${userContent}`;
+        userContent = `[REAL-TIME LIVE WEB SEARCH RESULTS (Date: ${currentDateStr})]\n${webResults}\n\nUser Question: ${userContent}`;
+      } else {
+        userContent = `[SYSTEM NOTE: Today's current date is ${currentDateStr}]\n${userContent}`;
       }
     }
 
     // Inject document text context
     if (fileContent) {
       userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
-    } else if (attachment && !webSearch) {
+    } else if (attachment && !needsSearch) {
       userContent = `[Attached File: ${attachment}]\n${userContent}`;
     }
 
