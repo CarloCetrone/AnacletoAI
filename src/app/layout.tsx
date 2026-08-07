@@ -15,6 +15,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Anacleto AI - Sovereign and Secure Artificial Intelligence",
   description: "Enterprise open-source LLMs (7B to 120B+) adapted and deployed on private data. Zero data leaks, minimal latency, native EU AI Act & GDPR compliance.",
+  icons: {
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+      { url: '/favicon.ico' }
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({
