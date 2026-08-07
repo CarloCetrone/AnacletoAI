@@ -14,33 +14,65 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Web Search Tool (DuckDuckGo Engine)
+// Robust Multi-Provider Web Search (DuckDuckGo Lite POST + DuckDuckGo HTML)
 async function performWebSearch(query: string): Promise<{ searchSummary: string; sources: string[] }> {
   try {
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const res = await fetch(searchUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,it;q=0.8"
-      }
-    });
-
-    if (!res.ok) return { searchSummary: "", sources: [] };
-    const htmlText = await res.text();
-
     const snippets: string[] = [];
     const sources: string[] = [];
-    const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
-    const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
 
-    for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
-      const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-      const cleanUrl = urlMatches[i] ? urlMatches[i].replace(/<[^>]+>/g, "").trim() : "";
+    // Provider 1: DuckDuckGo Lite (POST form-urlencoded)
+    const liteUrl = `https://lite.duckduckgo.com/lite/`;
+    const bodyParams = new URLSearchParams({ q: query });
+    const liteRes = await fetch(liteUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      },
+      body: bodyParams.toString()
+    });
 
-      if (cleanSnippet) {
-        snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
-        sources.push(cleanUrl || `Search Result ${i + 1}`);
+    if (liteRes.ok) {
+      const liteHtml = await liteRes.text();
+      const snippetMatches = liteHtml.match(/<td class="result-snippet">([\s\S]*?)<\/td>/g) || [];
+      const linkMatches = liteHtml.match(/<a class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g) || [];
+
+      for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
+        const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+        let cleanUrl = "";
+        if (linkMatches[i]) {
+          const hrefMatch = linkMatches[i].match(/href="([^"]+)"/);
+          cleanUrl = hrefMatch ? hrefMatch[1] : "";
+        }
+
+        if (cleanSnippet) {
+          snippets.push(`[Source ${i + 1} (${cleanUrl || "web"})]: ${cleanSnippet}`);
+          sources.push(cleanUrl || `Search Result ${i + 1}`);
+        }
+      }
+    }
+
+    // Provider 2 Fallback: DuckDuckGo HTML GET
+    if (snippets.length === 0) {
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const res = await fetch(searchUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept-Language": "en-US,en;q=0.9,it;q=0.8"
+        }
+      });
+      if (res.ok) {
+        const htmlText = await res.text();
+        const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
+        const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
+        for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
+          const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+          const cleanUrl = urlMatches[i] ? urlMatches[i].replace(/<[^>]+>/g, "").trim() : "";
+          if (cleanSnippet) {
+            snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
+            sources.push(cleanUrl || `Search Result ${i + 1}`);
+          }
+        }
       }
     }
 
@@ -231,8 +263,6 @@ If no search tool call is needed, answer the user directly using your knowledge 
       searchData = await performWebSearch(searchQuery);
 
       // Construct explicit Turn 2 trajectory:
-      // Turn 1 Assistant Message: The tool call request
-      // Turn 2 User Message: Injected Tool Results with System Instructions
       const turn2Messages = [
         ...apiMessages,
         { role: "assistant", content: `\`\`\`tool_call\nweb_search("${searchQuery}")\n\`\`\`` },
