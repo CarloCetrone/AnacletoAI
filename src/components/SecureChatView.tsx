@@ -16,7 +16,8 @@ import {
   Copy,
   Check,
   PanelLeftOpen,
-  PanelLeftClose
+  PanelLeftClose,
+  FileText
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 
@@ -40,6 +41,12 @@ interface ChatSession {
   title: string;
   messages: ChatMessage[];
   createdAt: string;
+}
+
+interface AttachedFileData {
+  name: string;
+  size: number;
+  content: string;
 }
 
 export const SecureChatView: React.FC = () => {
@@ -67,6 +74,7 @@ export const SecureChatView: React.FC = () => {
   const [activeSessionId, setActiveSessionId] = useState<string>('session-1');
   const [inputMessage, setInputMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [extractedFileText, setExtractedFileText] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +97,26 @@ export const SecureChatView: React.FC = () => {
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
+  // Extract raw text from selected file using FileReader API
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string || '';
+        setExtractedFileText(text);
+      };
+      reader.onerror = () => {
+        setExtractedFileText('');
+      };
+
+      // Read text-based files
+      reader.readAsText(file);
+    }
+  };
+
   // Typewriter streaming effect helper
   const animateStreamResponse = (
     aiMsgId: string, 
@@ -98,8 +126,8 @@ export const SecureChatView: React.FC = () => {
     latency: string
   ) => {
     let currentIdx = 0;
-    const chunkSize = 3; // Number of characters per tick
-    const speed = 15; // Milliseconds per tick
+    const chunkSize = 3;
+    const speed = 15;
 
     const interval = setInterval(() => {
       currentIdx += chunkSize;
@@ -132,6 +160,7 @@ export const SecureChatView: React.FC = () => {
     const currentSessionId = activeSessionId;
     const userMsgText = inputMessage;
     const attachedName = selectedFile ? selectedFile.name : undefined;
+    const attachedContent = extractedFileText;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -160,6 +189,7 @@ export const SecureChatView: React.FC = () => {
 
     setInputMessage('');
     setSelectedFile(null);
+    setExtractedFileText('');
     setLoading(true);
 
     try {
@@ -184,6 +214,7 @@ export const SecureChatView: React.FC = () => {
           body: JSON.stringify({
             message: userMsgText,
             attachment: attachedName || '',
+            fileContent: attachedContent || '',
             history: historyContext
           })
         });
@@ -201,6 +232,7 @@ export const SecureChatView: React.FC = () => {
         const queryParams = new URLSearchParams({
           message: userMsgText,
           attachment: attachedName || '',
+          fileContent: attachedContent || '',
           history: JSON.stringify(historyContext)
         }).toString();
 
@@ -240,7 +272,6 @@ export const SecureChatView: React.FC = () => {
           })
         );
       } else {
-        // Create initial placeholder message for real-time typewriter streaming
         const initialAiMsg: ChatMessage = {
           id: aiMsgId,
           sender: 'ai',
@@ -259,7 +290,6 @@ export const SecureChatView: React.FC = () => {
           })
         );
 
-        // Start typewriter streaming animation
         animateStreamResponse(aiMsgId, aiReplyText, currentSessionId, modelUsed, latency);
       }
     } catch (err: any) {
@@ -287,12 +317,6 @@ export const SecureChatView: React.FC = () => {
       );
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
     }
   };
 
@@ -436,7 +460,6 @@ export const SecureChatView: React.FC = () => {
         {/* Streamlined Top Chat Info Header */}
         <div className="h-12 border-b border-[#333333] bg-[#1A1A1A] px-4 sm:px-6 flex items-center justify-between text-xs text-[#BDBDBD]">
           <div className="flex items-center gap-3">
-            {/* Mobile Sidebar Toggle Button */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="p-1 rounded-md text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] md:hidden transition-colors"
@@ -530,7 +553,7 @@ export const SecureChatView: React.FC = () => {
 
                 {msg.attachments && (
                   <div className="mt-3 pt-2 border-t border-black/10 flex items-center gap-2 text-xs font-mono bg-black/10 p-2 rounded-lg text-black">
-                    <Paperclip className="w-3.5 h-3.5" />
+                    <FileText className="w-3.5 h-3.5" />
                     <span className="truncate">{msg.attachments[0]}</span>
                   </div>
                 )}
@@ -553,7 +576,7 @@ export const SecureChatView: React.FC = () => {
               </div>
               <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">Anacleto AI is thinking...</span>
+                <span className="text-xs text-[#BDBDBD]">Anacleto AI is analyzing file & generating response...</span>
               </div>
             </div>
           )}
@@ -564,12 +587,17 @@ export const SecureChatView: React.FC = () => {
         {/* INPUT CONTAINER */}
         <div className="p-4 sm:p-6 bg-[#121212] border-t border-[#333333] max-w-4xl w-full mx-auto">
           {selectedFile && (
-            <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#1A1A1A] border border-[#333333] text-xs text-[#FFD54F] font-mono">
-              <Paperclip className="w-3.5 h-3.5" />
-              <span className="max-w-xs truncate">{selectedFile.name}</span>
+            <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#1A1A1A] border border-[#FFD54F]/40 text-xs text-[#FFD54F] font-mono shadow-md">
+              <FileText className="w-3.5 h-3.5 text-[#FFD54F]" />
+              <span className="max-w-xs truncate font-semibold">{selectedFile.name}</span>
+              {extractedFileText && (
+                <span className="text-[10px] text-[#BDBDBD] bg-[#252525] px-1.5 py-0.5 rounded">
+                  {extractedFileText.length.toLocaleString()} chars
+                </span>
+              )}
               <button
-                onClick={() => setSelectedFile(null)}
-                className="text-[#666666] hover:text-white ml-1"
+                onClick={() => { setSelectedFile(null); setExtractedFileText(''); }}
+                className="text-[#666666] hover:text-white ml-1 font-bold"
               >
                 ×
               </button>
@@ -588,7 +616,7 @@ export const SecureChatView: React.FC = () => {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="absolute left-3 p-2 rounded-lg text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#1A1A1A] transition-colors"
-              title="Attach File"
+              title="Attach File (PDF, TXT, CSV, Code, JSON)"
             >
               <Paperclip className="w-5 h-5" />
             </button>
@@ -603,7 +631,7 @@ export const SecureChatView: React.FC = () => {
                   handleSendMessage(e);
                 }
               }}
-              placeholder="Ask Anacleto AI..."
+              placeholder={selectedFile ? `Ask about ${selectedFile.name}...` : "Ask Anacleto AI..."}
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />
 
@@ -619,7 +647,7 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center justify-between text-[11px] text-[#BDBDBD] mt-2 px-1">
             <span className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#FFD54F]" />
-              Sovereign Private Infrastructure.
+              Document Analysis Active (PDF, Code, CSV, TXT).
             </span>
             <span className="hidden sm:inline">Press Shift + Enter for new line</span>
           </div>

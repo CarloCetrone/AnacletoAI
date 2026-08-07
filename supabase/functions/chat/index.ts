@@ -1,4 +1,4 @@
-// Supabase Edge Function: Real-Time Streaming RunPod Chat Proxy
+// Supabase Edge Function: Real-Time Document Analysis & RunPod Chat Proxy
 // Location: supabase/functions/chat/index.ts
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -20,11 +20,11 @@ serve(async (req) => {
   }
 
   try {
-    const { message, history, attachment } = await req.json();
+    const { message, history, attachment, fileContent } = await req.json();
 
-    if (!message && (!history || history.length === 0)) {
+    if (!message && !fileContent && (!history || history.length === 0)) {
       return new Response(
-        JSON.stringify({ status: "error", response: "Please enter a valid message." }),
+        JSON.stringify({ status: "error", response: "Please enter a valid message or upload a document." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
@@ -32,7 +32,7 @@ serve(async (req) => {
     const apiMessages = [
       {
         role: "system",
-        content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses.",
+        content: "You are Anacleto AI, a sovereign enterprise foundation model (Anacleto-120B-Omni). Provide concise, highly technical, intelligent, and accurate responses. When a user attaches a document or code file, thoroughly analyze the file text provided within the delimiters and reference specific data lines in your answer.",
       },
     ];
 
@@ -47,7 +47,11 @@ serve(async (req) => {
     }
 
     let userContent = message || "";
-    if (attachment) {
+    
+    // Inject full extracted document text into user context
+    if (fileContent) {
+      userContent = `[ATTACHED FILE CONTEXT: "${attachment || "document"}"]\n--- BEGIN FILE CONTENT ---\n${fileContent}\n--- END FILE CONTENT ---\n\nUser Question/Instruction: ${userContent || "Please analyze the attached document."}`;
+    } else if (attachment) {
       userContent = `[Attached File: ${attachment}]\n${userContent}`;
     }
 
@@ -57,13 +61,13 @@ serve(async (req) => {
 
     const startTime = Date.now();
 
-    // 1. Try RunPod Sync Execution first for fast JSON response
+    // 1. Synchronous RunPod Call
     const runpodPayload = {
       input: {
         messages: apiMessages,
         sampling_params: {
-          max_tokens: 1024,
-          temperature: 0.7,
+          max_tokens: 1536,
+          temperature: 0.6,
         },
       },
     };
@@ -117,7 +121,7 @@ serve(async (req) => {
       }
     }
 
-    // 2. Fallback to Async RunPod Stream collection
+    // 2. Async Stream Fallback
     const asyncRes = await fetch(RUNPOD_RUN_ASYNC_URL, {
       method: "POST",
       headers: {
@@ -129,8 +133,8 @@ serve(async (req) => {
           messages: apiMessages,
           stream: true,
           sampling_params: {
-            max_tokens: 1024,
-            temperature: 0.7,
+            max_tokens: 1536,
+            temperature: 0.6,
           },
         },
       }),
@@ -149,7 +153,7 @@ serve(async (req) => {
     let collectedText = "";
     let isCompleted = false;
     let retries = 0;
-    const maxRetries = 60; // Max 30 seconds
+    const maxRetries = 60;
 
     while (!isCompleted && retries < maxRetries) {
       retries++;
@@ -182,10 +186,7 @@ serve(async (req) => {
             }
           }
 
-          if (status === "COMPLETED") {
-            isCompleted = true;
-            break;
-          } else if (status === "FAILED") {
+          if (status === "COMPLETED" || status === "FAILED") {
             isCompleted = true;
             break;
           }
