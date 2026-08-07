@@ -14,46 +14,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Real-Time Web Search Tool (Only invoked when user explicitly toggles webSearch)
+// High-Precision Real-Time Search Engine (Wikipedia API + DuckDuckGo JSON API)
 async function performWebSearch(query: string): Promise<string> {
   try {
     const snippets: string[] = [];
 
-    // 1. Query Wikipedia API
+    // 1. Wikipedia Search (Italian + English)
     const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
     const wikiRes = await fetch(wikiUrl);
     if (wikiRes.ok) {
       const wikiData = await wikiRes.json();
       const results = wikiData.query?.search || [];
       for (let i = 0; i < Math.min(2, results.length); i++) {
-        const snippetText = results[i].snippet.replace(/<[^>]+>/g, "").trim();
-        snippets.push(`[Wikipedia: ${results[i].title}]: ${snippetText}`);
+        const cleanSnippet = results[i].snippet.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').trim();
+        snippets.push(`[Wikipedia: ${results[i].title}]: ${cleanSnippet}`);
       }
     }
 
-    // 2. Query DuckDuckGo Lite
-    const searchUrl = `https://lite.duckduckgo.com/lite/`;
-    const bodyParams = new URLSearchParams({ q: query });
-    const ddgRes = await fetch(searchUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      },
-      body: bodyParams.toString()
-    });
-
+    // 2. DuckDuckGo Instant Answer API
+    const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+    const ddgRes = await fetch(ddgApiUrl);
     if (ddgRes.ok) {
-      const htmlText = await ddgRes.text();
-      const resultRegex = /<td class="result-snippet">([\s\S]*?)<\/td>/g;
-      let match;
-      let count = snippets.length + 1;
-
-      while ((match = resultRegex.exec(htmlText)) !== null && count <= 5) {
-        const cleanText = match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-        if (cleanText) {
-          snippets.push(`[Web Source ${count}]: ${cleanText}`);
-          count++;
+      const ddgJson = await ddgRes.json();
+      if (ddgJson.AbstractText) {
+        snippets.push(`[Web Result]: ${ddgJson.AbstractText}`);
+      } else if (ddgJson.RelatedTopics && Array.isArray(ddgJson.RelatedTopics)) {
+        for (let i = 0; i < Math.min(3, ddgJson.RelatedTopics.length); i++) {
+          if (ddgJson.RelatedTopics[i].Text) {
+            snippets.push(`[Web Source ${i + 1}]: ${ddgJson.RelatedTopics[i].Text}`);
+          }
         }
       }
     }
