@@ -14,36 +14,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// High-Precision Real-Time Search Engine (Wikipedia API + DuckDuckGo JSON API)
+// High-Precision Real-Time Web Search Engine (DuckDuckGo HTML Engine)
 async function performWebSearch(query: string): Promise<string> {
   try {
-    const snippets: string[] = [];
-
-    // 1. Query Wikipedia API
-    const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
-    const wikiRes = await fetch(wikiUrl);
-    if (wikiRes.ok) {
-      const wikiData = await wikiRes.json();
-      const results = wikiData.query?.search || [];
-      for (let i = 0; i < Math.min(2, results.length); i++) {
-        const cleanSnippet = results[i].snippet.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').trim();
-        snippets.push(`[Wikipedia: ${results[i].title}]: ${cleanSnippet}`);
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,it;q=0.8"
       }
-    }
+    });
 
-    // 2. Query DuckDuckGo Instant Answer API
-    const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
-    const ddgRes = await fetch(ddgApiUrl);
-    if (ddgRes.ok) {
-      const ddgJson = await ddgRes.json();
-      if (ddgJson.AbstractText) {
-        snippets.push(`[Web Result]: ${ddgJson.AbstractText}`);
-      } else if (ddgJson.RelatedTopics && Array.isArray(ddgJson.RelatedTopics)) {
-        for (let i = 0; i < Math.min(3, ddgJson.RelatedTopics.length); i++) {
-          if (ddgJson.RelatedTopics[i].Text) {
-            snippets.push(`[Web Source ${i + 1}]: ${ddgJson.RelatedTopics[i].Text}`);
-          }
-        }
+    if (!res.ok) return "";
+    const htmlText = await res.text();
+
+    const snippets: string[] = [];
+    const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
+    const urlMatches = htmlText.match(/<a class="result__url[^>]*>([\s\S]*?)<\/a>/g) || [];
+
+    for (let i = 0; i < Math.min(5, snippetMatches.length); i++) {
+      const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      const cleanUrl = urlMatches[i] ? urlMatches[i].replace(/<[^>]+>/g, "").trim() : "";
+
+      if (cleanSnippet) {
+        snippets.push(`[Source ${i + 1} (${cleanUrl})]: ${cleanSnippet}`);
       }
     }
 
