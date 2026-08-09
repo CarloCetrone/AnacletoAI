@@ -101,6 +101,11 @@ export const SecureChatView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const targetBufferRef = useRef<{ [msgId: string]: string }>({});
+  const displayedTextRef = useRef<{ [msgId: string]: string }>({});
+  const isStreamingRef = useRef<boolean>(false);
+  const lastStepTimeRef = useRef<number>(0);
+  const animationFrameIdRef = useRef<number | null>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession.messages;
@@ -211,6 +216,17 @@ export const SecureChatView: React.FC = () => {
       attachments: attachedName ? [attachedName] : undefined
     };
 
+    const aiMsgId = (Date.now() + 1).toString();
+    const defaultModelName = activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni';
+
+    const initialAiMsg: ChatMessage = {
+      id: aiMsgId,
+      sender: 'ai',
+      text: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      modelUsed: defaultModelName
+    };
+
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
         if (sess.id === currentSessionId) {
@@ -221,7 +237,7 @@ export const SecureChatView: React.FC = () => {
           return {
             ...sess,
             title: newTitle,
-            messages: [...sess.messages, userMessage]
+            messages: [...sess.messages, userMessage, initialAiMsg]
           };
         }
         return sess;
@@ -233,19 +249,104 @@ export const SecureChatView: React.FC = () => {
     setExtractedFileText('');
     setLoading(true);
 
+    targetBufferRef.current[aiMsgId] = '';
+    displayedTextRef.current[aiMsgId] = '';
+    isStreamingRef.current = true;
+    lastStepTimeRef.current = performance.now();
+
+    if (animationFrameIdRef.current) {
+      cancelAnimationFrame(animationFrameIdRef.current);
+    }
+
+    // 60fps Adaptive Velocity & Deceleration Stream Engine
+    const runAsymptoticStreamLoop = () => {
+      const target = targetBufferRef.current[aiMsgId] || '';
+      const current = displayedTextRef.current[aiMsgId] || '';
+
+      if (current.length < target.length) {
+        const remaining = target.length - current.length;
+
+        // Dynamic Velocity & Deceleration Curve:
+        // - Multiple Chunks Accumulated (R > 20): Speed scales up to match network arrival rate
+        // - Single Chunk / Nearing Tail (R <= 20): Speed decelerates smoothly (18ms -> 24ms -> 35ms -> 60ms -> 90ms -> 140ms -> 220ms)
+        let requiredDelay = 18;
+        let step = 1;
+
+        if (isStreamingRef.current) {
+          if (remaining > 80) {
+            requiredDelay = 6;
+            step = Math.min(remaining, Math.ceil(remaining / 20));
+          } else if (remaining > 40) {
+            requiredDelay = 10;
+            step = 2;
+          } else if (remaining > 20) {
+            requiredDelay = 14;
+            step = 1;
+          } else if (remaining <= 1) {
+            requiredDelay = 220; // Gentle glide stretching final character
+            step = 1;
+          } else if (remaining <= 2) {
+            requiredDelay = 140;
+            step = 1;
+          } else if (remaining <= 4) {
+            requiredDelay = 90;
+            step = 1;
+          } else if (remaining <= 7) {
+            requiredDelay = 60;
+            step = 1;
+          } else if (remaining <= 12) {
+            requiredDelay = 35;
+            step = 1;
+          } else if (remaining <= 18) {
+            requiredDelay = 24;
+            step = 1;
+          } else {
+            requiredDelay = 18;
+            step = 1;
+          }
+        } else {
+          requiredDelay = 8; // Fast finish when generation completes
+          step = remaining > 30 ? Math.ceil(remaining / 6) : (remaining > 10 ? 2 : 1);
+        }
+
+        const now = performance.now();
+        const elapsed = now - lastStepTimeRef.current;
+
+        if (elapsed >= requiredDelay) {
+          lastStepTimeRef.current = now;
+
+          const nextText = target.slice(0, current.length + step);
+          displayedTextRef.current[aiMsgId] = nextText;
+
+          setSessions((prevSessions) =>
+            prevSessions.map((sess) => {
+              if (sess.id === currentSessionId) {
+                return {
+                  ...sess,
+                  messages: sess.messages.map((m) =>
+                    m.id === aiMsgId ? { ...m, text: nextText } : m
+                  )
+                };
+              }
+              return sess;
+            })
+          );
+        }
+      }
+
+      if (isStreamingRef.current || (displayedTextRef.current[aiMsgId]?.length || 0) < (targetBufferRef.current[aiMsgId]?.length || 0)) {
+        animationFrameIdRef.current = requestAnimationFrame(runAsymptoticStreamLoop);
+      }
+    };
+
+    animationFrameIdRef.current = requestAnimationFrame(runAsymptoticStreamLoop);
+
     try {
       const historyContext = activeSession.messages.map((m) => ({
         sender: m.sender,
         text: m.text,
         id: m.id
       }));
-
-      let aiReplyText = '';
-      let isErr = false;
-      let modelUsed = activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni';
-      let latency = '0ms';
-      let searchSummary = '';
-      let sources: string[] = [];
 
       if (isConfigured) {
         const res = await fetch(SUPABASE_FUNCTION_URL, {
@@ -265,16 +366,84 @@ export const SecureChatView: React.FC = () => {
           })
         });
 
-        const data = await res.json();
-        if (res.ok && data.response) {
-          aiReplyText = data.response;
-          modelUsed = data.model || (activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni');
-          latency = data.latency || '25ms';
-          searchSummary = data.searchSummary || '';
-          sources = data.sources || [];
-        } else {
-          aiReplyText = data.response || data.error || 'Serverless endpoint error.';
-          isErr = true;
+        if (!res.ok || !res.body) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.response || errData.error || `Serverless endpoint error ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const eventBlock of events) {
+            const lines = eventBlock.split('\n');
+            let eventType = '';
+            let dataStr = '';
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                eventType = line.substring(7).trim();
+              } else if (line.startsWith('data: ')) {
+                dataStr = line.substring(6).trim();
+              }
+            }
+
+            if (dataStr) {
+              try {
+                const eventData = JSON.parse(dataStr);
+
+                if (eventType === 'text' && eventData.chunk) {
+                  targetBufferRef.current[aiMsgId] = (targetBufferRef.current[aiMsgId] || '') + eventData.chunk;
+                } else if (eventType === 'searchSummary') {
+                  setSessions((prevSessions) =>
+                    prevSessions.map((sess) => {
+                      if (sess.id === currentSessionId) {
+                        return {
+                          ...sess,
+                          messages: sess.messages.map((m) =>
+                            m.id === aiMsgId ? {
+                              ...m,
+                              searchSummary: eventData.summary,
+                              sources: eventData.sources
+                            } : m
+                          )
+                        };
+                      }
+                      return sess;
+                    })
+                  );
+                } else if (eventType === 'done') {
+                  setSessions((prevSessions) =>
+                    prevSessions.map((sess) => {
+                      if (sess.id === currentSessionId) {
+                        return {
+                          ...sess,
+                          messages: sess.messages.map((m) =>
+                            m.id === aiMsgId ? {
+                              ...m,
+                              modelUsed: eventData.model || defaultModelName,
+                              latency: eventData.latency || '25ms'
+                            } : m
+                          )
+                        };
+                      }
+                      return sess;
+                    })
+                  );
+                }
+              } catch (e) {
+                // Ignore transient JSON parse errors
+              }
+            }
+          }
         }
       } else {
         const queryParams = new URLSearchParams({
@@ -288,84 +457,27 @@ export const SecureChatView: React.FC = () => {
         const data = await response.json();
 
         if (data && data.status === 'success' && data.response) {
-          aiReplyText = data.response;
-          latency = data.latency || '35ms';
-        } else if (data && data.response) {
-          aiReplyText = `API Error: ${data.response}`;
-          isErr = true;
-        } else {
-          aiReplyText = 'No response received from endpoint.';
-          isErr = true;
+          targetBufferRef.current[aiMsgId] = data.response;
         }
-      }
-
-      const aiMsgId = (Date.now() + 1).toString();
-
-      if (isErr) {
-        const errorMsg: ChatMessage = {
-          id: aiMsgId,
-          sender: 'ai',
-          text: aiReplyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed,
-          latency,
-          isError: true
-        };
-        setSessions((prevSessions) =>
-          prevSessions.map((sess) => {
-            if (sess.id === currentSessionId) {
-              return { ...sess, messages: [...sess.messages, errorMsg] };
-            }
-            return sess;
-          })
-        );
-      } else {
-        const initialAiMsg: ChatMessage = {
-          id: aiMsgId,
-          sender: 'ai',
-          text: '',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed,
-          latency,
-          searchSummary,
-          sources
-        };
-
-        setSessions((prevSessions) =>
-          prevSessions.map((sess) => {
-            if (sess.id === currentSessionId) {
-              return { ...sess, messages: [...sess.messages, initialAiMsg] };
-            }
-            return sess;
-          })
-        );
-
-        animateStreamResponse(aiMsgId, aiReplyText, currentSessionId, modelUsed, latency, searchSummary, sources);
       }
     } catch (err: any) {
       console.error('Chat API Error:', err);
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: `Network Error: Unable to connect to backend endpoint. (${err.message || err})`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: selectedModel === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni',
-        latency: '0ms',
-        isError: true
-      };
-
+      targetBufferRef.current[aiMsgId] = `API Error: ${err.message || err}`;
       setSessions((prevSessions) =>
         prevSessions.map((sess) => {
           if (sess.id === currentSessionId) {
             return {
               ...sess,
-              messages: [...sess.messages, errorMsg]
+              messages: sess.messages.map((m) =>
+                m.id === aiMsgId ? { ...m, isError: true } : m
+              )
             };
           }
           return sess;
         })
       );
     } finally {
+      isStreamingRef.current = false;
       setLoading(false);
     }
   };
@@ -397,14 +509,36 @@ export const SecureChatView: React.FC = () => {
     const msgId = msg.id;
     let mainContent = text;
     let thinkBlock = '';
+    let isThinkingInProgress = false;
 
-    const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/);
-    if (thinkMatch) {
-      thinkBlock = thinkMatch[1].trim();
-      mainContent = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    if (!text && !msg.searchSummary) {
+      return (
+        <div className="flex items-center gap-2 text-xs text-[#BDBDBD] py-1 font-mono">
+          <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
+          <span>{webSearchEnabled ? 'Searching web & reasoning...' : 'Generating response...'}</span>
+        </div>
+      );
     }
 
-    const parts = mainContent.split(/(```[\s\S]*?```)/g);
+    // Advanced <think> Tag Stream Parser
+    if (text.includes('<think>')) {
+      const thinkStartIdx = text.indexOf('<think>');
+      const thinkEndIdx = text.indexOf('</think>');
+
+      if (thinkEndIdx !== -1) {
+        // Completed <think>...</think> block
+        thinkBlock = text.slice(thinkStartIdx + 7, thinkEndIdx).trim();
+        mainContent = (text.slice(0, thinkStartIdx) + text.slice(thinkEndIdx + 8)).trim();
+      } else {
+        // Streaming <think>... block (in progress)
+        isThinkingInProgress = true;
+        thinkBlock = text.slice(thinkStartIdx + 7).trim();
+        mainContent = text.slice(0, thinkStartIdx).trim();
+      }
+    }
+
+    // Split main content by code block markers (both complete ```code``` and streaming ```code)
+    const rawParts = mainContent.split(/(```[\s\S]*?(?:```|$))/g);
 
     return (
       <div className="space-y-3">
@@ -433,34 +567,48 @@ export const SecureChatView: React.FC = () => {
           </div>
         ) : null}
 
-        {/* Accordion Reasoning Block */}
-        {thinkBlock ? (
-          <div className="rounded-lg bg-[#121212] border border-[#333333] text-xs font-mono overflow-hidden my-2">
-            <button
-              onClick={() => setOpenThinkId(openThinkId === msgId ? null : msgId)}
-              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#FFD54F] transition-colors"
-            >
-              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
-                <Brain className="w-3.5 h-3.5" />
-                Thinking Process & Reasoning Steps
-              </span>
-              {openThinkId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+        {/* Accordion Reasoning Block (Handles both complete and streaming reasoning) */}
+        {thinkBlock ? (() => {
+          const isExplicitlyClosed = openThinkId === `closed-${msgId}`;
+          const isThinkOpen = !isExplicitlyClosed;
 
-            {openThinkId === msgId && (
-              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
-                {thinkBlock}
-              </div>
-            )}
-          </div>
-        ) : null}
+          return (
+            <div className="rounded-lg bg-[#121212] border border-[#333333] text-xs font-mono overflow-hidden my-2">
+              <button
+                onClick={() => setOpenThinkId(isExplicitlyClosed ? msgId : `closed-${msgId}`)}
+                className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#FFD54F] transition-colors"
+              >
+                <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
+                  <Brain className="w-3.5 h-3.5 text-[#FFD54F]" />
+                  Thinking Process & Reasoning Steps {isThinkingInProgress && '(Reasoning in Progress...)'}
+                </span>
+                {isThinkOpen ? <ChevronUp className="w-3.5 h-3.5 text-[#FFD54F]" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
 
-        {/* Message Text & Code Snippets */}
-        {parts.map((part, idx) => {
-          if (part.startsWith('```') && part.endsWith('```')) {
-            const firstLineEnd = part.indexOf('\n');
-            const language = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() : '';
-            const codeContent = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3) : part.slice(3, -3);
+              {isThinkOpen && (
+                <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
+                  {thinkBlock}
+                  {isThinkingInProgress && (
+                    <span className="inline-block w-2 h-4 ml-1 bg-[#FFD54F] animate-pulse align-middle" />
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })() : null}
+
+        {/* Main Answer Message Text & Code Snippets */}
+        {rawParts.map((part, idx) => {
+          if (!part && isThinkingInProgress) return null;
+
+          if (part.startsWith('```')) {
+            let codeStr = part.slice(3);
+            if (codeStr.endsWith('```')) {
+              codeStr = codeStr.slice(0, -3);
+            }
+            const firstLineEnd = codeStr.indexOf('\n');
+            const language = firstLineEnd !== -1 ? codeStr.slice(0, firstLineEnd).trim() : '';
+            const codeContent = firstLineEnd !== -1 ? codeStr.slice(firstLineEnd + 1) : codeStr;
 
             const isHtmlSvg = language === 'html' || language === 'svg' || codeContent.includes('<svg');
 
@@ -705,26 +853,6 @@ export const SecureChatView: React.FC = () => {
               )}
             </div>
           ))}
-
-          {loading && (
-            <div className="flex gap-3 sm:gap-4 justify-start">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#FFD54F] p-0.5 flex-shrink-0">
-                <div className="w-full h-full bg-[#121212] rounded-[10px] flex items-center justify-center text-[#FFD54F]">
-                  <Bot className="w-5 h-5 text-[#FFD54F]" />
-                </div>
-              </div>
-              <div className="bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] rounded-2xl rounded-tl-none p-4 text-sm flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-                <span className="text-xs text-[#BDBDBD]">
-                  {webSearchEnabled 
-                    ? `Searching web with ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'}...` 
-                    : deepReasoningEnabled 
-                    ? `Reasoning with ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'}...` 
-                    : `${selectedModel === 'anacleto-7b' ? 'Anacleto-7B Turbo' : 'Anacleto-32B Omni'} is thinking...`}
-                </span>
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
