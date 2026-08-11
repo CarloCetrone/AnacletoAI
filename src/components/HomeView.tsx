@@ -2,7 +2,7 @@ import React from 'react';
 import { Shield, Cpu, ArrowRight, CheckCircle2, Zap, Code2, Bot, Layers, FlaskConical, Building, Award, Check } from 'lucide-react';
 
 interface HomeViewProps {
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, id?: string) => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
@@ -101,82 +101,100 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* FULL SUITE PLATFORM PRESENTATION */}
+        {/* ENTERPRISE B2B SERVICES */}
         <div className="my-16">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h2 className="text-2xl sm:text-4xl font-bold text-[#F5F5F5] tracking-tight uppercase">
-              A Complete AI Ecosystem for the Enterprise
+              Enterprise AI Solutions
             </h2>
             <p className="text-[#BDBDBD] text-sm sm:text-base mt-3">
-              From breakthrough research papers to scalable production APIs and domain-specific model tuning.
+              Specialized B2B services engineered for highly regulated sectors requiring absolute data sovereignty and compliance.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             
-            {/* 1. Frontier Research */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
-              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
-                <FlaskConical className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Frontier AI Research</h3>
-              <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Advancing fundamental LLM architectures, reasoning capabilities, multimodal alignment, and efficient transformer training algorithms.
-              </p>
-            </div>
-
-            {/* 2. Enterprise API & Chat */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
-              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
-                <Code2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Standard LLM Usage & APIs</h3>
-              <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Access our proprietary base and instruction models via OpenAI-compatible REST APIs, SDKs, or ready-to-use web chat interfaces.
-              </p>
-            </div>
-
-            {/* 3. Autonomous Agents */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
+            {/* 1. Sovereign RAG */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'rag')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
                 <Layers className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Autonomous AI Agents</h3>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Sovereign RAG-as-a-Service</h3>
               <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Deploy multi-agent workflows capable of complex planning, tool execution, code generation, and automated data processing.
+                Connect enterprise data silos securely. Fully managed, air-gapped vector databases for "ChatGPT over internal data" with zero hallucination.
               </p>
             </div>
 
-            {/* 4. Fine-Tuning & Custom Models */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
-              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
-                <Cpu className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Custom Model Fine-Tuning</h3>
-              <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Adapt foundation open models (7B to 120B+) trained exclusively on your internal legal, financial, or technical domain data.
-              </p>
-            </div>
-
-            {/* 5. Air-Gapped Sovereignty */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
+            {/* 2. Compliance Audits */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'compliance')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
                 <Shield className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">100% Data Sovereignty</h3>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">AI Compliance & Readiness</h3>
               <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Deploy models on your private cloud or on-premise hardware with zero data telemetry, meeting strict EU AI Act & GDPR standards.
+                Consulting and auditing services to transition enterprise AI usage into full compliance with the EU AI Act and GDPR frameworks.
               </p>
             </div>
 
-            {/* 6. Ultra-Fast Inference */}
-            <div className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group">
+            {/* 3. Vertical Agents */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'agents')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <Bot className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Vertical Autonomous Agents</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed">
+                Highly specific agents for Legal Discovery & Redaction, Financial KYC/AML, and Medical Data Analysis—all fully air-gapped.
+              </p>
+            </div>
+
+            {/* 4. AI Appliance */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'appliance')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <Cpu className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">The "AI Appliance"</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed">
+                Pre-loaded physical rack servers deployed on-premise inside your intranet. Zero outbound connections, ultimate security.
+              </p>
+            </div>
+
+            {/* 5. Distillation */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'distillation')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <FlaskConical className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Model Distillation & Edge AI</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed">
+                We distill our 120B models into highly specialized 3B/7B models customized for your tasks, runnable on employee laptops or POS systems.
+              </p>
+            </div>
+
+            {/* 6. Red Teaming */}
+            <div 
+              onClick={() => onNavigate('service-detail', 'red-teaming')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
                 <Zap className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Sub-50ms Inference Engine</h3>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Sovereign Red Teaming</h3>
               <p className="text-[#BDBDBD] text-sm leading-relaxed">
-                Custom KV-cache and speculative decoding kernels engineered for lightning-fast token generation at scale.
+                Aggressive security auditing and adversarial attacks against your internal AI pipelines to ensure robust data leakage protection.
               </p>
             </div>
 

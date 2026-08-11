@@ -8,20 +8,37 @@ import { LoginView } from '@/components/LoginView';
 import { SecureChatView } from '@/components/SecureChatView';
 import { ContactView } from '@/components/ContactView';
 import { ApiPlaygroundView } from '@/components/ApiPlaygroundView';
+import { DashboardView } from '@/components/DashboardView';
+import { ServiceDetailView } from '@/components/ServiceDetailView';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 
 function MainAppContent() {
-  const [currentView, setCurrentView] = useState<'home' | 'login' | 'chat' | 'contact' | 'api-docs'>('home');
-  const { user } = useAuth();
+  const [currentView, setCurrentView] = useState<'home' | 'login' | 'chat' | 'contact' | 'api-docs' | 'dashboard' | 'service-detail' | 'solutions'>('home');
+  const [currentServiceId, setCurrentServiceId] = useState<string>('');
+  const { user, profile } = useAuth();
+
+  const navigateTo = (view: string, serviceId?: string) => {
+    if (serviceId) setCurrentServiceId(serviceId);
+    setCurrentView(view as any);
+  };
 
   const renderView = () => {
     switch (currentView) {
       case 'home':
-        return <HomeView onNavigate={(view) => setCurrentView(view as any)} />;
+      case 'solutions':
+        return <HomeView onNavigate={navigateTo} />;
       case 'login':
-        return <LoginView onNavigate={(view) => setCurrentView(view as any)} />;
+        return <LoginView onNavigate={navigateTo} />;
       case 'api-docs':
+        if (!user) {
+          setCurrentView('login');
+          return null;
+        }
+        if (profile?.accountType === 'standard') {
+          setCurrentView('dashboard');
+          return null;
+        }
         return <ApiPlaygroundView />;
       case 'chat':
         if (!user) {
@@ -49,16 +66,32 @@ function MainAppContent() {
           );
         }
         return <SecureChatView />;
+      case 'dashboard':
+        if (!user) {
+          setCurrentView('login');
+          return null;
+        }
+        return <DashboardView onNavigate={navigateTo} />;
+      case 'service-detail':
+        if (!user) {
+          setCurrentView('login');
+          return null;
+        }
+        if (profile?.accountType !== 'enterprise') {
+          setCurrentView('dashboard');
+          return null;
+        }
+        return <ServiceDetailView serviceId={currentServiceId} onNavigate={navigateTo} />;
       case 'contact':
         return <ContactView />;
       default:
-        return <HomeView onNavigate={(view) => setCurrentView(view as any)} />;
+        return <HomeView onNavigate={navigateTo} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between selection:bg-amber-400 selection:text-zinc-950 bg-grid-pattern relative">
-      <Navbar currentView={currentView} setCurrentView={(view) => setCurrentView(view as any)} />
+      <Navbar currentView={currentView} setCurrentView={navigateTo} />
       
       <main className="flex-1 pt-16">
         {renderView()}

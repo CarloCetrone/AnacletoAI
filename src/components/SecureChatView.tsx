@@ -23,10 +23,12 @@ import {
   Layout,
   ChevronDown,
   ChevronUp,
-  Cpu
+  Cpu,
+  Trash2
 } from 'lucide-react';
-import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
+import { useAuth } from '@/context/AuthContext';
 
 const SUPABASE_FUNCTION_URL = 'https://zzlptwfqqnjhxtvmebqb.supabase.co/functions/v1/chat';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_8eu0QBwgFKoECWdlqf4DvQ_mtmVsixc';
@@ -60,11 +62,12 @@ interface ArtifactData {
 
 export const SecureChatView: React.FC = () => {
   const isConfigured = isSupabaseConfigured();
+  const { session } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   // Model Selection State
-  const [selectedModel, setSelectedModel] = useState<'anacleto-32b' | 'anacleto-7b'>('anacleto-32b');
+  const [selectedModel, setSelectedModel] = useState<'anacleto-large' | 'anacleto-medium' | 'anacleto-small'>('anacleto-large');
 
   // Modern Capability Toggles
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -85,9 +88,9 @@ export const SecureChatView: React.FC = () => {
         {
           id: 'welcome-msg',
           sender: 'ai',
-          text: 'Welcome to Anacleto AI. Select between Anacleto-32B (Omni High-Reasoning) and Anacleto-7B (Turbo Low-Latency) from the model selector header.',
+          text: 'Welcome to Anacleto AI. Select between Anacleto-Large (Omni Reasoning), Anacleto-Medium (Balanced), and Anacleto-Small (Compact) from the model selector header.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-32B-Omni'
+          modelUsed: 'Anacleto-Large'
         }
       ]
     }
@@ -107,7 +110,14 @@ export const SecureChatView: React.FC = () => {
   const lastStepTimeRef = useRef<number>(0);
   const animationFrameIdRef = useRef<number | null>(null);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const loadedSessionIds = useRef<Set<string>>(new Set());
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || {
+    id: 'session-1',
+    title: 'New Chat',
+    createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    messages: []
+  };
   const messages = activeSession.messages;
 
   const scrollToBottom = () => {
@@ -117,6 +127,70 @@ export const SecureChatView: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [activeSessionId, messages, loading]);
+
+  // Fetch Chat Sessions on Mount
+  useEffect(() => {
+    if (isConfigured && session?.user?.id) {
+      const loadSessions = async () => {
+        const { data, error } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+          
+        if (data && data.length > 0) {
+          setSessions(prev => {
+            const newSessions = data.map((d: any) => {
+              const existing = prev.find(s => s.id === d.id);
+              return {
+                id: d.id,
+                title: d.title,
+                createdAt: new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                messages: existing ? existing.messages : []
+              };
+            });
+            return newSessions;
+          });
+          // Only change active session if we don't have one or it's a placeholder
+          if (activeSessionId === 'session-1' && data[0].id) {
+            setActiveSessionId(data[0].id);
+          }
+        }
+      };
+      loadSessions();
+    }
+  }, [isConfigured, session?.user?.id]);
+
+  // Fetch Chat Messages when Active Session Changes
+  useEffect(() => {
+    if (isConfigured && session?.user && activeSessionId && !activeSessionId.startsWith('session-')) {
+      if (!loadedSessionIds.current.has(activeSessionId)) {
+        loadedSessionIds.current.add(activeSessionId);
+        const loadMessages = async () => {
+          const { data } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('session_id', activeSessionId)
+            .order('created_at', { ascending: true });
+            
+          if (data && data.length > 0) {
+            setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+              ...s,
+              messages: data.map((m: any) => ({
+                id: m.id,
+                sender: m.sender as 'user' | 'ai',
+                text: m.text,
+                modelUsed: m.model_used,
+                searchSummary: m.search_summary,
+                timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }))
+            } : s));
+          }
+        };
+        loadMessages();
+      }
+    }
+  }, [activeSessionId, isConfigured, session]);
 
   const copyToClipboard = (text: string, msgId: string) => {
     navigator.clipboard.writeText(text);
@@ -202,11 +276,33 @@ export const SecureChatView: React.FC = () => {
     e.preventDefault();
     if ((!inputMessage.trim() && !selectedFile) || loading) return;
 
-    const currentSessionId = activeSessionId;
+    let currentSessionId = activeSessionId;
     const userMsgText = inputMessage;
     const attachedName = selectedFile ? selectedFile.name : undefined;
     const attachedContent = extractedFileText;
     const activeModelKey = selectedModel;
+
+    // Database: Create new session if local
+    let sessionWasCreated = false;
+    let newTitle = '';
+    if (isConfigured && session?.user && currentSessionId.startsWith('session-')) {
+      newTitle = userMsgText.slice(0, 30) + (userMsgText.length > 30 ? '...' : '');
+      const { data, error } = await supabase.from('chat_sessions').insert({
+        user_id: session.user.id,
+        title: newTitle
+      }).select('id').single();
+      
+      if (error) {
+        console.error('Failed to create session in Supabase:', error);
+      }
+      
+      if (data) {
+        currentSessionId = data.id;
+        setActiveSessionId(currentSessionId);
+        loadedSessionIds.current.add(currentSessionId); // Prevent useEffect race condition
+        sessionWasCreated = true;
+      }
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -216,8 +312,18 @@ export const SecureChatView: React.FC = () => {
       attachments: attachedName ? [attachedName] : undefined
     };
 
+    // Database: Insert User Message
+    if (isConfigured && session?.user && !currentSessionId.startsWith('session-')) {
+      const { error } = await supabase.from('chat_messages').insert({
+        session_id: currentSessionId,
+        sender: 'user',
+        text: userMsgText
+      });
+      if (error) console.error('Failed to insert user message in Supabase:', error);
+    }
+
     const aiMsgId = (Date.now() + 1).toString();
-    const defaultModelName = activeModelKey === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni';
+    const defaultModelName = activeModelKey === 'anacleto-small' ? 'Anacleto-Small' : activeModelKey === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large';
 
     const initialAiMsg: ChatMessage = {
       id: aiMsgId,
@@ -229,14 +335,19 @@ export const SecureChatView: React.FC = () => {
 
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
-        if (sess.id === currentSessionId) {
-          const newTitle = sess.messages.length <= 1 && userMsgText 
+        // If we just created a new session, match against the old local activeSessionId
+        // Otherwise, match against currentSessionId
+        const isTargetSession = sessionWasCreated ? sess.id === activeSessionId : sess.id === currentSessionId;
+        
+        if (isTargetSession) {
+          const finalTitle = sessionWasCreated ? newTitle : (sess.messages.length <= 1 && userMsgText 
             ? userMsgText.slice(0, 24) + (userMsgText.length > 24 ? '...' : '') 
-            : sess.title;
+            : sess.title);
 
           return {
             ...sess,
-            title: newTitle,
+            id: currentSessionId, // Update the local session ID to the Supabase UUID!
+            title: finalTitle,
             messages: [...sess.messages, userMessage, initialAiMsg]
           };
         }
@@ -266,48 +377,14 @@ export const SecureChatView: React.FC = () => {
       if (current.length < target.length) {
         const remaining = target.length - current.length;
 
-        // Dynamic Velocity & Deceleration Curve:
-        // - Multiple Chunks Accumulated (R > 20): Speed scales up to match network arrival rate
-        // - Single Chunk / Nearing Tail (R <= 20): Speed decelerates smoothly (18ms -> 24ms -> 35ms -> 60ms -> 90ms -> 140ms -> 220ms)
-        let requiredDelay = 18;
-        let step = 1;
-
-        if (isStreamingRef.current) {
-          if (remaining > 80) {
-            requiredDelay = 6;
-            step = Math.min(remaining, Math.ceil(remaining / 20));
-          } else if (remaining > 40) {
-            requiredDelay = 10;
-            step = 2;
-          } else if (remaining > 20) {
-            requiredDelay = 14;
-            step = 1;
-          } else if (remaining <= 1) {
-            requiredDelay = 220; // Gentle glide stretching final character
-            step = 1;
-          } else if (remaining <= 2) {
-            requiredDelay = 140;
-            step = 1;
-          } else if (remaining <= 4) {
-            requiredDelay = 90;
-            step = 1;
-          } else if (remaining <= 7) {
-            requiredDelay = 60;
-            step = 1;
-          } else if (remaining <= 12) {
-            requiredDelay = 35;
-            step = 1;
-          } else if (remaining <= 18) {
-            requiredDelay = 24;
-            step = 1;
-          } else {
-            requiredDelay = 18;
-            step = 1;
-          }
-        } else {
-          requiredDelay = 8; // Fast finish when generation completes
-          step = remaining > 30 ? Math.ceil(remaining / 6) : (remaining > 10 ? 2 : 1);
-        }
+        // Continuous Velocity & Deceleration Curve:
+        // Speed is a continuous function of the remaining characters.
+        // This dynamically scales rendering speed to ensure it never falls too far behind.
+        const step = Math.max(1, Math.floor(remaining / 10));
+        
+        // Delay is continuously adjusted: faster polling when far behind, slower when caught up.
+        // Bounded between 8ms (120fps max update rate) and 35ms (~28fps typewriter crawl).
+        const requiredDelay = Math.max(8, 35 - remaining);
 
         const now = performance.now();
         const elapsed = now - lastStepTimeRef.current;
@@ -353,7 +430,7 @@ export const SecureChatView: React.FC = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`
           },
           body: JSON.stringify({
             message: userMsgText,
@@ -380,19 +457,21 @@ export const SecureChatView: React.FC = () => {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || '';
+          
+          let eventIndex;
+          while ((eventIndex = buffer.indexOf('\n\n')) !== -1) {
+            const eventBlock = buffer.slice(0, eventIndex);
+            buffer = buffer.slice(eventIndex + 2);
 
-          for (const eventBlock of events) {
             const lines = eventBlock.split('\n');
-            let eventType = '';
+            let eventType = 'message';
             let dataStr = '';
 
             for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                eventType = line.substring(7).trim();
-              } else if (line.startsWith('data: ')) {
-                dataStr = line.substring(6).trim();
+              if (line.startsWith('event:')) {
+                eventType = line.substring(6).trim();
+              } else if (line.startsWith('data:')) {
+                dataStr = line.substring(5).trim();
               }
             }
 
@@ -438,9 +517,14 @@ export const SecureChatView: React.FC = () => {
                       return sess;
                     })
                   );
+                } else if (eventType === 'status') {
+                  // Optional: Update some UI status if desired.
+                } else if (eventType === 'error') {
+                  throw new Error(eventData.message);
                 }
               } catch (e) {
-                // Ignore transient JSON parse errors
+                // Ignore parsing errors for partial/malformed data chunks
+                console.warn("SSE Parse Warning:", e, dataStr);
               }
             }
           }
@@ -477,6 +561,18 @@ export const SecureChatView: React.FC = () => {
         })
       );
     } finally {
+      // Database: Insert AI Message
+      if (isConfigured && session?.user && !currentSessionId.startsWith('session-') && targetBufferRef.current[aiMsgId]) {
+        const finalModelUsed = activeModelKey === 'anacleto-small' ? 'Anacleto-Small' : activeModelKey === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large';
+        const { error } = await supabase.from('chat_messages').insert({
+          session_id: currentSessionId,
+          sender: 'ai',
+          text: targetBufferRef.current[aiMsgId],
+          model_used: finalModelUsed
+        });
+        if (error) console.error('Failed to insert AI message in Supabase:', error);
+      }
+
       isStreamingRef.current = false;
       setLoading(false);
     }
@@ -494,7 +590,7 @@ export const SecureChatView: React.FC = () => {
           sender: 'ai',
           text: 'Welcome to a new Anacleto AI Session. How can I assist you?',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: selectedModel === 'anacleto-7b' ? 'Anacleto-7B-Turbo' : 'Anacleto-32B-Omni'
+          modelUsed: selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'
         }
       ]
     };
@@ -502,6 +598,35 @@ export const SecureChatView: React.FC = () => {
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSessionId);
     setSidebarOpen(false);
+  };
+
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    
+    // Optimistic UI update
+    setSessions(prev => {
+      const filtered = prev.filter(s => s.id !== sessionId);
+      if (filtered.length === 0) {
+        return [{
+          id: 'session-1',
+          title: 'New Chat',
+          createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: []
+        }];
+      }
+      return filtered;
+    });
+
+    if (activeSessionId === sessionId) {
+      const remaining = sessions.filter(s => s.id !== sessionId);
+      setActiveSessionId(remaining.length > 0 ? remaining[0].id : 'session-1');
+    }
+    
+    // Delete from Database
+    if (isConfigured && session?.user && !sessionId.startsWith('session-')) {
+      const { error } = await supabase.from('chat_sessions').delete().eq('id', sessionId);
+      if (error) console.error('Failed to delete session:', error);
+    }
   };
 
   const renderMessageContent = (msg: ChatMessage) => {
@@ -706,17 +831,25 @@ export const SecureChatView: React.FC = () => {
                     setActiveSessionId(sess.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all group ${
                     isActive
                       ? 'bg-[#252525] text-[#FFD54F] border-l-2 border-[#FFD54F]'
                       : 'text-[#BDBDBD] hover:bg-[#252525]/50 hover:text-[#F5F5F5]'
                   }`}
                 >
-                  <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center gap-2 truncate flex-1 min-w-0">
                     <MessageSquare className="w-3.5 h-3.5 text-[#FFD54F] flex-shrink-0" />
                     <span className="truncate">{sess.title}</span>
                   </div>
-                  <ChevronRight className="w-3.5 h-3.5 opacity-40" />
+                  {!sess.id.startsWith('session-') && (
+                    <button 
+                      onClick={(e) => handleDeleteSession(e, sess.id)}
+                      className="opacity-0 group-hover:opacity-100 hover:text-red-400 p-1 rounded transition-opacity"
+                      title="Delete Chat"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -760,11 +893,12 @@ export const SecureChatView: React.FC = () => {
               <Cpu className="w-3.5 h-3.5 text-[#FFD54F] absolute left-2.5 pointer-events-none z-10" />
               <select
                 value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value as 'anacleto-32b' | 'anacleto-7b')}
+                onChange={(e) => setSelectedModel(e.target.value as 'anacleto-large' | 'anacleto-medium' | 'anacleto-small')}
                 className="bg-[#252525] text-[#FFD54F] border border-[#FFD54F]/40 pl-8 pr-7 py-1 rounded text-[11px] font-mono font-semibold focus:outline-none focus:border-[#FFD54F] cursor-pointer hover:bg-[#2F2F2F] transition-colors appearance-none"
               >
-                <option value="anacleto-32b">Anacleto-32B (Omni Reasoning)</option>
-                <option value="anacleto-7b">Anacleto-7B (Turbo Low-Latency)</option>
+                <option value="anacleto-large">Anacleto-Large (Omni Reasoning)</option>
+                <option value="anacleto-medium">Anacleto-Medium (Balanced)</option>
+                <option value="anacleto-small">Anacleto-Small (Compact)</option>
               </select>
               <ChevronDown className="w-3 h-3 text-[#FFD54F] absolute right-2 pointer-events-none" />
             </div>
@@ -889,7 +1023,7 @@ export const SecureChatView: React.FC = () => {
             </div>
 
             <div className="text-[11px] font-mono text-[#BDBDBD]">
-              Engine: <span className="text-[#FFD54F] font-semibold">{selectedModel === 'anacleto-7b' ? '7B Turbo' : '32B Omni'}</span>
+              Engine: <span className="text-[#FFD54F] font-semibold">{selectedModel === 'anacleto-small' ? 'Small' : selectedModel === 'anacleto-medium' ? 'Medium' : 'Large'}</span>
             </div>
           </div>
 
@@ -940,12 +1074,12 @@ export const SecureChatView: React.FC = () => {
               }}
               placeholder={
                 webSearchEnabled 
-                  ? `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'} with Live Web Search...` 
+                  ? `Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'} with Live Web Search...` 
                   : deepReasoningEnabled 
-                  ? `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B' : 'Anacleto-32B'} complex reasoning...` 
+                  ? `Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'} complex reasoning...` 
                   : selectedFile 
                   ? `Ask about ${selectedFile.name}...` 
-                  : `Ask ${selectedModel === 'anacleto-7b' ? 'Anacleto-7B Turbo' : 'Anacleto-32B Omni'}...`
+                  : `Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'}...`
               }
               className="w-full pl-12 pr-14 py-3.5 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all resize-none"
             />

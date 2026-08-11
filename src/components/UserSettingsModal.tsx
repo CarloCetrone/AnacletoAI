@@ -8,7 +8,7 @@ interface UserSettingsModalProps {
 }
 
 export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({ isOpen, onClose }) => {
-  const { profile, exportUserData, deleteUserAccount, isConfigured } = useAuth();
+  const { profile, exportUserData, deleteUserAccount, isConfigured, updateAccountType } = useAuth();
   const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
@@ -60,10 +60,51 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({ isOpen, on
               <span className="text-xs text-[#BDBDBD] block uppercase tracking-wider">Signed in as</span>
               <strong className="text-sm font-semibold text-[#F5F5F5]">{profile.email}</strong>
               <span className="text-[10px] text-[#666666] block mt-0.5">User ID: {profile.id}</span>
+              <span className="text-[10px] text-[#FFD54F] block mt-0.5 font-bold uppercase">Account Type: {profile.accountType}</span>
             </div>
             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-[#FFD54F]/10 text-[#FFD54F] border border-[#FFD54F]/30">
               {isConfigured ? 'EU Cloud Session' : 'Demo Local Session'}
             </span>
+          </div>
+
+          {/* Account Type Management */}
+          <div className="p-4 rounded-xl bg-[#121212] border border-[#333333] space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#F5F5F5]">
+              <User className="w-4 h-4 text-[#FFD54F]" />
+              Account Type
+            </div>
+            <p className="text-xs text-[#BDBDBD]">
+              Switch your account type to access different dashboard tools and limits.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => updateAccountType('standard')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                  profile.accountType === 'standard' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
+                }`}
+              >
+                Standard
+              </button>
+              <button
+                type="button"
+                onClick={() => updateAccountType('developer')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                  profile.accountType === 'developer' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
+                }`}
+              >
+                Developer
+              </button>
+              <button
+                type="button"
+                onClick={() => updateAccountType('enterprise')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                  profile.accountType === 'enterprise' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
+                }`}
+              >
+                Enterprise
+              </button>
+            </div>
           </div>
 
           {/* Security & Multi-Factor Auth */}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ShieldCheck, Atom, Check, AlertCircle, Info, Lock, Mail, KeyRound } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Atom, Check, AlertCircle, Info, Lock, Mail, KeyRound, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { PrivacyPolicyModal } from '@/components/PrivacyPolicyModal';
 
@@ -17,6 +17,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
   
   // GDPR Consent Checkboxes (Must NOT be pre-checked under GDPR Art. 7)
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  
+  // User Account Type for RBAC
+  const [accountType, setAccountType] = useState<'standard' | 'developer' | 'enterprise'>('standard');
+  const [username, setUsername] = useState('');
+  const [enterpriseName, setEnterpriseName] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -50,13 +55,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
         setErrorMsg('Password must be at least 8 characters long.');
         return;
       }
+      if (accountType !== 'enterprise' && !username.trim()) {
+        setErrorMsg('Username is required.');
+        return;
+      }
+      if (accountType === 'enterprise' && !enterpriseName.trim()) {
+        setErrorMsg('Enterprise Name is required.');
+        return;
+      }
       if (!acceptedTerms) {
         setErrorMsg('Under EU GDPR rules, you must accept the Terms of Service & Privacy Policy to create an account.');
         return;
       }
 
       setLoading(true);
-      const res = await signUpWithEmail(email, password, acceptedTerms);
+      const res = await signUpWithEmail(email, password, acceptedTerms, accountType, username, enterpriseName);
       setLoading(false);
 
       if (res.error) {
@@ -165,6 +178,84 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
 
         {/* Auth Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          
+          {/* Account Type Selection (Sign Up Mode) */}
+          {mode === 'signup' && (
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
+                Select Account Type
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAccountType('standard')}
+                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                    accountType === 'standard' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
+                  }`}
+                >
+                  Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccountType('developer')}
+                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                    accountType === 'developer' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
+                  }`}
+                >
+                  Developer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccountType('enterprise')}
+                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
+                    accountType === 'enterprise' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
+                  }`}
+                >
+                  Enterprise
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Sign Up Fields */}
+          {mode === 'signup' && accountType !== 'enterprise' && (
+            <div>
+              <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
+                Username
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="unique_username"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg bg-[#121212] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all"
+                />
+                <User className="w-4 h-4 text-[#666666] absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+          )}
+
+          {mode === 'signup' && accountType === 'enterprise' && (
+            <div>
+              <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
+                Enterprise Name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={enterpriseName}
+                  onChange={(e) => setEnterpriseName(e.target.value)}
+                  placeholder="Acme Corp"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg bg-[#121212] border border-[#333333] text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all"
+                />
+                <ShieldCheck className="w-4 h-4 text-[#666666] absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
               Work Email

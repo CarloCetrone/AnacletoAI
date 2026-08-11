@@ -52,14 +52,18 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               Home
             </button>
             <button
-              onClick={() => setCurrentView('api-docs')}
+              onClick={() => {
+                setCurrentView('solutions');
+                // Optional: scroll to solutions section if we had one
+                window.scrollTo({ top: 800, behavior: 'smooth' });
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'api-docs'
+                currentView === 'solutions'
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              API Playground
+              Solutions
             </button>
             <button
               onClick={() => setCurrentView('contact')}
@@ -71,25 +75,29 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
             >
               Contact
             </button>
-            {!user ? (
-              <button
-                onClick={() => setCurrentView('login')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  currentView === 'login'
-                    ? 'text-[#FFD54F] bg-[#1A1A1A]'
-                    : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
-                }`}
-              >
-                Login
-              </button>
-            ) : (
-              <button
-                onClick={() => setSettingsOpen(true)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#FFD54F] bg-[#1A1A1A] border border-[#FFD54F]/20 hover:border-[#FFD54F]/50 transition-colors flex items-center gap-2"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                Settings
-              </button>
+            {user && (
+              <>
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    currentView === 'dashboard' || currentView === 'service-detail'
+                      ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                      : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setCurrentView('chat')}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    currentView === 'chat'
+                      ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                      : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                  }`}
+                >
+                  Chat
+                </button>
+              </>
             )}
           </nav>
 
@@ -97,9 +105,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
           <div className="flex items-center space-x-3">
             {user ? (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSettingsOpen(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/50 transition-all"
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1A1A1A] border border-[#333333] transition-all"
                   title={user.email || 'User Account'}
                 >
                   <div className="w-6 h-6 rounded-full bg-[#FFD54F] text-black font-bold text-xs flex items-center justify-center">
@@ -108,6 +115,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                   <span className="text-xs text-[#F5F5F5] font-medium hidden sm:inline max-w-[120px] truncate">
                     {profile?.email || user.email}
                   </span>
+                </div>
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  className="p-2 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-all"
+                  title="Settings"
+                >
+                  <Settings className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => { signOut(); setCurrentView('home'); }}
@@ -119,14 +133,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               </div>
             ) : (
               <button
-                onClick={() => setCurrentView('chat')}
-                className="px-4 py-2 rounded-md bg-transparent border border-[#FFD54F] text-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] font-bold text-xs sm:text-sm uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#FFD54F]/10 flex items-center gap-2"
+                onClick={() => setCurrentView('login')}
+                className="px-5 py-2 rounded-lg bg-[#FFD54F] text-black hover:bg-[#FFCA28] font-bold text-sm uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#FFD54F]/10 flex items-center"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FFD54F] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FFD54F]"></span>
-                </span>
-                Try Anacleto Chat
+                Login
               </button>
             )}
 
@@ -153,12 +163,12 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               Home
             </button>
             <button
-              onClick={() => { setCurrentView('api-docs'); setMobileMenuOpen(false); }}
+              onClick={() => { setCurrentView('solutions'); setMobileMenuOpen(false); window.scrollTo({ top: 800, behavior: 'smooth' }); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'api-docs' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                currentView === 'solutions' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              API Playground
+              Solutions
             </button>
             <button
               onClick={() => { setCurrentView('contact'); setMobileMenuOpen(false); }}
@@ -178,13 +188,28 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                 Login
               </button>
             ) : (
-              <button
-                onClick={() => { setSettingsOpen(true); setMobileMenuOpen(false); }}
-                className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold text-[#FFD54F] bg-[#1A1A1A] border border-[#FFD54F]/20 flex items-center gap-2"
-              >
-                <Settings className="w-4 h-4" />
-                Account Settings
-              </button>
+              <>
+                <button
+                  onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                    currentView === 'dashboard' || currentView === 'service-detail'
+                      ? 'text-[#FFD54F] bg-[#1A1A1A]' 
+                      : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => { setCurrentView('chat'); setMobileMenuOpen(false); }}
+                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                    currentView === 'chat'
+                      ? 'text-[#FFD54F] bg-[#1A1A1A]' 
+                      : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                  }`}
+                >
+                  Chat
+                </button>
+              </>
             )}
           </div>
         )}

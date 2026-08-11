@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { Code2, Copy, Check, Terminal, Cpu, Zap, ShieldCheck } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Code2, Copy, Check, Terminal, Cpu, Zap, ShieldCheck, Play, Loader2 } from 'lucide-react';
 
 export const ApiPlaygroundView: React.FC = () => {
   const [activeLang, setActiveLang] = useState<'python' | 'curl' | 'node' | 'go'>('python');
   const [copied, setCopied] = useState(false);
+  const [output, setOutput] = useState<string>('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const animationRef = useRef<number | null>(null);
 
   const codeSnippets = {
     python: `import openai
@@ -87,6 +90,53 @@ func main() {
     navigator.clipboard.writeText(codeSnippets[activeLang]);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRunCode = () => {
+    if (isStreaming) return;
+    setIsStreaming(true);
+    setOutput('');
+
+    const jsonResponse = `{
+  "id": "chatcmpl-9f8e7d6c5b4a3",
+  "object": "chat.completion",
+  "created": 1716301234,
+  "model": "anacleto-120b-omni",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Based on section 4.2 of the provided contract, the primary legal risk involves the uncapped indemnification clause regarding intellectual property infringement. This exposes the enterprise to potentially limitless financial liability if a third-party claim is brought against the software deliverables."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 48,
+    "total_tokens": 90
+  }
+}`;
+
+    let currentIdx = 0;
+    const speed = 2; // characters per frame
+
+    const streamLoop = () => {
+      currentIdx += speed;
+      setOutput(jsonResponse.slice(0, currentIdx));
+
+      if (currentIdx < jsonResponse.length) {
+        animationRef.current = requestAnimationFrame(streamLoop);
+      } else {
+        setIsStreaming(false);
+      }
+    };
+
+    // Simulate 22ms Time-To-First-Token
+    setTimeout(() => {
+      animationRef.current = requestAnimationFrame(streamLoop);
+    }, 22);
   };
 
   return (
@@ -173,6 +223,35 @@ func main() {
           <pre className="p-6 overflow-x-auto text-xs sm:text-sm font-mono text-[#F5F5F5] leading-relaxed bg-[#0D0D0D]">
             <code>{codeSnippets[activeLang]}</code>
           </pre>
+
+          {/* Terminal Output */}
+          <div className="border-t border-[#333333] bg-[#121212]">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-[#252525]">
+              <div className="flex items-center gap-2 text-[#FFD54F] text-xs font-bold uppercase tracking-wider">
+                <Terminal className="w-3.5 h-3.5" />
+                Response Output
+              </div>
+              <button
+                onClick={handleRunCode}
+                disabled={isStreaming}
+                className="flex items-center gap-2 px-4 py-1.5 rounded bg-[#FFD54F] text-black font-bold text-xs uppercase tracking-wider hover:bg-[#FFCA28] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isStreaming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-black" />}
+                {isStreaming ? 'Executing...' : 'Run Code'}
+              </button>
+            </div>
+            <div className="p-6 min-h-[200px]">
+              {output ? (
+                <pre className="text-xs font-mono text-emerald-400 leading-relaxed overflow-x-auto">
+                  <code>{output}</code>
+                </pre>
+              ) : (
+                <div className="h-full flex items-center justify-center text-[#666666] text-xs font-mono italic">
+                  Click 'Run Code' to execute the snippet on the Frankfurt sovereign cluster...
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Right Column - Endpoint Performance Specs */}
