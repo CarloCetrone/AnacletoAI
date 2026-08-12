@@ -4,7 +4,7 @@ import {
   Paperclip, Send, ShieldCheck, MessageSquare, Plus, Bot, User, 
   ChevronRight, Sparkles, Lock, Loader2, Zap, AlertCircle, Copy, Check, 
   PanelLeftOpen, PanelLeftClose, FileText, Globe, Brain, Layout, 
-  ChevronDown, ChevronUp, Cpu, Trash2, Image as ImageIcon, Box, BookOpen, Download
+  ChevronDown, ChevronUp, Cpu, Trash2, Image as ImageIcon, Box, BookOpen, Download, Maximize2
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
