@@ -306,6 +306,10 @@ export const SecureChatView: React.FC = () => {
                 const eventData = JSON.parse(dataStr);
                 if (eventType === 'text' && eventData.chunk) {
                   targetBufferRef.current[aiMsgId] = (targetBufferRef.current[aiMsgId] || '') + eventData.chunk;
+                } else if (eventType === 'reasoning' && eventData.chunk) {
+                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
+                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, thoughts: (m.thoughts || '') + eventData.chunk } : m)
+                   } : s));
                 } else if (eventType === 'tool_start') {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { 
@@ -395,14 +399,7 @@ export const SecureChatView: React.FC = () => {
   const renderMessageContent = (msg: ChatMessage) => {
     const msgId = msg.id;
     let cleanText = msg.text || '';
-    let thoughtsText = msg.thoughts || '';
-    
-    // Extract thought tags
-    const thoughtMatch = cleanText.match(/<thought>([\s\S]*?)<\/thought>/i) || cleanText.match(/<thought>([\s\S]*?)$/i);
-    if (thoughtMatch) {
-       thoughtsText = thoughtMatch[1];
-       cleanText = cleanText.replace(/<thought>[\s\S]*?(<\/thought>|$)/i, '').trim();
-    }
+    const thoughtsText = msg.thoughts || '';
 
     if (!cleanText && !thoughtsText && !msg.searchSummary && !msg.activeTool && (!msg.executedTools || msg.executedTools.length === 0) && !msg.images && !msg.models3D && !msg.latexBlocks) {
       return (
@@ -691,13 +688,6 @@ export const SecureChatView: React.FC = () => {
               </div>
             )}
             <div className="relative">
-              {loading && (
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2">
-                  <button type="button" onClick={() => abortControllerRef.current?.abort()} className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-950/80 border border-red-500/50 text-red-200 text-xs font-bold hover:bg-red-900 transition-colors shadow-lg backdrop-blur-sm">
-                    <XCircle className="w-3.5 h-3.5" /> Stop Generation
-                  </button>
-                </div>
-              )}
               <form onSubmit={handleSendMessage} className="relative flex items-center">
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute left-2 p-2.5 rounded-xl text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors"><Paperclip className="w-5 h-5" /></button>
@@ -706,8 +696,8 @@ export const SecureChatView: React.FC = () => {
                 placeholder={`Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'} to use tools or chat...`}
                 className="w-full pl-14 pr-16 py-4 rounded-xl bg-transparent text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none resize-none"
               />
-              <button type="submit" disabled={(!inputMessage.trim() && !selectedFile) || loading} className="absolute right-2 p-3 rounded-xl bg-gradient-to-r from-[#FFD54F] to-[#ffc107] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 text-[#000000] transition-all shadow-md">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : <Send className="w-4 h-4 font-bold ml-0.5" />}
+              <button type={loading ? "button" : "submit"} onClick={() => loading ? abortControllerRef.current?.abort() : undefined} disabled={(!inputMessage.trim() && !selectedFile && !loading)} className={`absolute right-2 p-3 rounded-xl transition-all shadow-md ${loading ? 'bg-red-950/90 text-red-300 hover:bg-red-900 border border-red-500/50' : 'bg-gradient-to-r from-[#FFD54F] to-[#ffc107] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 text-[#000000]'}`}>
+                {loading ? <XCircle className="w-4 h-4 font-bold" /> : <Send className="w-4 h-4 font-bold ml-0.5" />}
               </button>
             </form>
           </div>

@@ -84,10 +84,10 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "web_search",
-      description: "Search the web for up-to-date information.",
+      description: "Execute a web search to find real-time, up-to-date information, news, or technical documentation. ALWAYS use this tool when asked about current events, specific facts, or recently released technologies.",
       parameters: {
         type: "object",
-        properties: { query: { type: "string", description: "The search query." } },
+        properties: { query: { type: "string", description: "The highly optimized search query string. Keep it concise and keyword-focused." } },
         required: ["query"]
       }
     }
@@ -96,10 +96,10 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_image",
-      description: "Generate an image using Flux based on a detailed prompt.",
+      description: "Generate a high-quality image using the Flux model. Use this tool ONLY when the user explicitly requests an image, drawing, or visual representation.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Detailed visual description of the image." } },
+        properties: { prompt: { type: "string", description: "A highly detailed, descriptive prompt for the image generator. Include artistic style, lighting, framing, and specific visual elements." } },
         required: ["prompt"]
       }
     }
@@ -108,10 +108,10 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_3d_model",
-      description: "Generate a 3D model asset (GLB/GLTF) based on a description.",
+      description: "Generate a 3D model asset (GLB/GLTF) based on a text description. Use this when the user asks for a 3D object, model, or CAD asset.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Description of the 3D object to generate." } },
+        properties: { prompt: { type: "string", description: "A clear, concise description of the 3D object to generate." } },
         required: ["prompt"]
       }
     }
@@ -120,12 +120,12 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_latex",
-      description: "Generate raw LaTeX code for a document or Beamer slideshow. Returns the LaTeX string that will be compiled on the client side.",
+      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document.",
       parameters: {
         type: "object",
         properties: { 
-          latex_code: { type: "string", description: "The complete, raw LaTeX code." },
-          is_slideshow: { type: "boolean", description: "Whether this is a Beamer presentation." }
+          latex_code: { type: "string", description: "The complete, syntactically correct, and raw LaTeX code. Do NOT wrap it in markdown block quotes inside this string. Ensure standard document classes are used (e.g. article, beamer)." },
+          is_slideshow: { type: "boolean", description: "Set to true if the user requested a slideshow or presentation (Beamer), false otherwise." }
         },
         required: ["latex_code", "is_slideshow"]
       }
@@ -171,13 +171,20 @@ serve(async (req) => {
 
     const currentMessages: any[] = [];
     
-    let baseSystemPrompt = "You are an advanced AI assistant.";
-    if (webSearch) baseSystemPrompt += "\n- You have a 'web_search' tool to search the internet.";
-    if (imageGen) baseSystemPrompt += "\n- You have a 'generate_image' tool to create images.";
-    if (model3D) baseSystemPrompt += "\n- You have a 'generate_3d_model' tool to create 3D assets.";
-    if (pdfGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write LaTeX code for documents.";
-    if (slideshowGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write Beamer slideshows.";
-    if (deepReasoning) baseSystemPrompt += "\n- You MUST think step by step before answering. Wrap your reasoning in <thought>...</thought> XML tags.";
+    let baseSystemPrompt = `You are Anacleto AI, an elite multimodal assistant and orchestrator.
+Your primary goal is to provide deeply intelligent, formatting-rich, and context-aware responses.
+
+CRITICAL INSTRUCTIONS:
+1. ALWAYS format your text outputs using Markdown. Use tables, bolding, italics, and code blocks aggressively to make your responses readable and beautiful.
+2. If the user asks for a specific format (e.g., PDF, Slides, Image, 3D Model), you MUST use the corresponding tool. Do NOT just write the code out as text if a tool is available.
+3. Keep your direct text responses highly professional, concise, and focused on the user's intent.`;
+
+    if (webSearch) baseSystemPrompt += "\n- You are connected to the live internet via the 'web_search' tool. ALWAYS verify unknown facts or current events.";
+    if (imageGen) baseSystemPrompt += "\n- You have the 'generate_image' tool. Use it to create rich visuals upon request.";
+    if (model3D) baseSystemPrompt += "\n- You have the 'generate_3d_model' tool to create 3D assets.";
+    if (pdfGen) baseSystemPrompt += "\n- You have the 'generate_latex' tool. Use it (is_slideshow=false) to generate and compile PDF documents.";
+    if (slideshowGen) baseSystemPrompt += "\n- You have the 'generate_latex' tool. Use it (is_slideshow=true) to generate Beamer presentations.";
+    if (deepReasoning) baseSystemPrompt += "\n- Deep Reasoning is ENABLED. Take your time to think thoroughly before arriving at your final output.";
     
     currentMessages.push({ role: "system", content: baseSystemPrompt });
 
@@ -228,6 +235,11 @@ serve(async (req) => {
               stream_options: { include_usage: true }
             };
 
+            if (deepReasoning) {
+               streamOptions.chat_template_kwargs = { enable_thinking: true };
+               streamOptions.reasoning_budget = 4096;
+            }
+
             const responseStream = await openai.chat.completions.create(streamOptions) as any;
             
             let fullContent = "";
@@ -239,8 +251,12 @@ serve(async (req) => {
                   finalOutputTokens += chunk.usage.completion_tokens;
                }
 
-               const delta = chunk.choices?.[0]?.delta;
+               const delta = chunk.choices?.[0]?.delta as any;
                if (!delta) continue;
+
+               if (delta.reasoning_content) {
+                  sendEvent("reasoning", { chunk: delta.reasoning_content });
+               }
 
                if (delta.content) {
                   fullContent += delta.content;
