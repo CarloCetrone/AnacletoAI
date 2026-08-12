@@ -14,7 +14,9 @@ import {
   UserPlus,
   CheckCircle,
   XCircle,
-  Users
+  Users,
+  Wallet,
+  Trash2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
@@ -38,6 +40,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [modelStats, setModelStats] = useState<Record<string, { input: number, output: number, credits: number }>>({});
   const [totalCredits, setTotalCredits] = useState(0);
   const [myEnterpriseName, setMyEnterpriseName] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number>(10);
 
   // Invitation State
   const [invitations, setInvitations] = useState<any[]>([]);
@@ -48,7 +51,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   // Enterprise Member State
   const [enterpriseMembers, setEnterpriseMembers] = useState<any[]>([]);
-  const [membersUsage, setMembersUsage] = useState<Record<string, { input: number, output: number, credits: number }>>({});
+  const [membersUsage, setMembersUsage] = useState<Record<string, { input: number, output: number, credits: number, username: string }>>({});
+
+  // API Key State
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [newKey, setNewKey] = useState<string | null>(null);
 
   const fetchInvitations = async () => {
     if (!isConfigured || !profile || !user) return;
@@ -61,19 +68,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
   };
 
+  const fetchApiKeys = async () => {
+    if (!user) return;
+    const { data } = await supabase.from('api_keys').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+    if (data) setApiKeys(data);
+  };
+
   useEffect(() => {
     if (isConfigured && user && profile) {
       fetchInvitations();
+      fetchApiKeys();
+
+      // Fetch personal wallet balance
+      const fetchWallet = async () => {
+        const { data } = await supabase.from('profiles').select('credit_balance').eq('id', user.id).single();
+        if (data) setWalletBalance(data.credit_balance);
+      };
+      fetchWallet();
 
       if (profile.accountType !== 'enterprise') {
         const fetchStandardData = async () => {
-          // Fetch Enterprise Name if sponsored
           if (profile.enterpriseId) {
             const { data } = await supabase.from('profiles').select('enterprise_name').eq('id', profile.enterpriseId).single();
             if (data?.enterprise_name) setMyEnterpriseName(data.enterprise_name);
           }
 
-          // Fetch Token Usage
           const { data, error } = await supabase
             .from('token_usage')
             .select('model_name, input_tokens, output_tokens')
@@ -105,26 +124,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             .select('*')
             .eq('enterprise_id', user.id);
           
-          if (members) {
-            setEnterpriseMembers(members);
-            const userIds = members.map(m => m.id);
-            if (userIds.length > 0) {
-              const { data: usageData } = await supabase
-                .from('token_usage')
-                .select('user_id, model_name, input_tokens, output_tokens')
-                .in('user_id', userIds);
-                
-              if (usageData) {
-                const usageMap: Record<string, { input: number, output: number, credits: number }> = {};
-                usageData.forEach(row => {
-                  if (!usageMap[row.user_id]) usageMap[row.user_id] = { input: 0, output: 0, credits: 0 };
-                  usageMap[row.user_id].input += row.input_tokens;
-                  usageMap[row.user_id].output += row.output_tokens;
-                  usageMap[row.user_id].credits += calculateCredits(row.model_name, row.input_tokens, row.output_tokens);
-                });
-                setMembersUsage(usageMap);
-              }
-            }
+          if (members) setEnterpriseMembers(members);
+
+          // Fetch usage where enterprise_id matches, so we don't lose data when members are removed
+          const { data: usageData } = await supabase
+            .from('token_usage')
+            .select('user_id, model_name, input_tokens, output_tokens, profiles!user_id(username)')
+            .eq('enterprise_id', user.id);
+            
+          if (usageData) {
+            const usageMap: Record<string, { input: number, output: number, credits: number, username: string }> = {};
+            usageData.forEach(row => {
+              if (!usageMap[row.user_id]) usageMap[row.user_id] = { input: 0, output: 0, credits: 0, username: (row.profiles as any)?.username || 'Removed User' };
+              usageMap[row.user_id].input += row.input_tokens;
+              usageMap[row.user_id].output += row.output_tokens;
+              usageMap[row.user_id].credits += calculateCredits(row.model_name, row.input_tokens, row.output_tokens);
+            });
+            setMembersUsage(usageMap);
           }
         };
         fetchEnterpriseData();
@@ -173,7 +189,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    if (confirm('Are you sure you want to remove this member? Their credit limit will be reset to default (€10).')) {
+    if (confirm('Are you sure you want to remove this member? Their credit limit will be reset.')) {
       const { error } = await supabase.rpc('remove_enterprise_member', { member_id: memberId });
       if (!error) {
         window.location.reload();
@@ -183,14 +199,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
   };
 
+  const handleTopUp = async () => {
+    const amount = prompt('MOCK PAYMENT: How many € would you like to add to your wallet?', '100');
+    if (amount && !isNaN(Number(amount))) {
+      const { error } = await supabase.rpc('top_up_wallet', { amount: Number(amount) });
+      if (!error) {
+        alert(`Successfully topped up €${amount}!`);
+        window.location.reload();
+      } else {
+        alert('Top up failed: ' + error.message);
+      }
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    const newKeyString = 'sk-proj-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const { error } = await supabase.from('api_keys').insert({
+      user_id: user?.id,
+      key_value: newKeyString
+    });
+    if (!error) {
+      setNewKey(newKeyString);
+      fetchApiKeys();
+    } else {
+      alert('Failed to create API key');
+    }
+  };
+
+  const handleRevokeApiKey = async (id: string) => {
+    if (confirm('Are you sure you want to revoke this API key? Any applications using it will immediately lose access.')) {
+      await supabase.from('api_keys').delete().eq('id', id);
+      fetchApiKeys();
+    }
+  };
+
   const renderEnterpriseDashboard = () => {
     const totalEnterpriseCredits = Object.values(membersUsage).reduce((a, b) => a + b.credits, 0);
     
-    const chartData = enterpriseMembers.map(m => ({
-      name: m.username,
-      Credits: Number((membersUsage[m.id]?.credits || 0).toFixed(4)),
-      Limit: m.credit_limit
-    }));
+    // Convert membersUsage map to an array for recharts
+    const chartData = Object.entries(membersUsage).map(([userId, usage]) => {
+      return {
+        name: usage.username,
+        Credits: Number((usage.credits || 0).toFixed(4)),
+      };
+    });
 
     return (
       <>
@@ -204,24 +256,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between">
             <div>
-              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Credits Used (MTD)</p>
-              <p className="text-3xl font-mono text-[#FFD54F]">€{totalEnterpriseCredits.toFixed(4)}</p>
+              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Available Wallet Balance</p>
+              <p className="text-3xl font-mono text-emerald-400">€{walletBalance.toFixed(2)}</p>
+              <button onClick={handleTopUp} className="text-[10px] mt-2 font-bold uppercase text-[#FFD54F] hover:underline">Top Up Wallet</button>
             </div>
-            <BarChart3 className="w-8 h-8 text-[#FFD54F]/20" />
+            <Wallet className="w-8 h-8 text-emerald-400/20" />
           </div>
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between">
             <div>
-              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Pending Invites</p>
-              <p className="text-3xl font-mono text-[#F5F5F5]">{invitations.filter(i => i.status === 'pending').length}</p>
+              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Total Credits Used</p>
+              <p className="text-3xl font-mono text-[#FFD54F]">€{totalEnterpriseCredits.toFixed(4)}</p>
             </div>
-            <UserPlus className="w-8 h-8 text-[#333333]" />
+            <BarChart3 className="w-8 h-8 text-[#FFD54F]/20" />
           </div>
         </div>
 
         <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2">
           Credit Usage by Member
         </h2>
-        {enterpriseMembers.length > 0 ? (
+        {chartData.length > 0 ? (
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg mb-10 h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -239,7 +292,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         ) : (
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-10 shadow-lg mb-10 text-center">
-            <p className="text-[#666666] text-sm">No members yet. Invite a member to see analytics.</p>
+            <p className="text-[#666666] text-sm">No token usage recorded yet.</p>
           </div>
         )}
 
@@ -382,22 +435,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     <>
       {renderInvitationsList()}
       {renderEnterpriseLink()}
+      
+      {!profile?.enterpriseId && (
+        <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between mb-8">
+          <div>
+            <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Available Wallet Balance</p>
+            <p className="text-3xl font-mono text-emerald-400">€{walletBalance.toFixed(2)}</p>
+            <button onClick={handleTopUp} className="text-[10px] mt-2 font-bold uppercase text-[#FFD54F] hover:underline">Top Up Wallet</button>
+          </div>
+          <Wallet className="w-8 h-8 text-emerald-400/20" />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[#F5F5F5] font-bold text-lg flex items-center gap-2">
               <Key className="w-5 h-5 text-[#FFD54F]" /> Developer API Keys
             </h3>
-            <button className="text-xs px-3 py-1.5 bg-[#FFD54F] text-black font-bold uppercase tracking-wider rounded">Create Key</button>
+            <button onClick={handleCreateApiKey} className="text-xs px-3 py-1.5 bg-[#FFD54F] text-black font-bold uppercase tracking-wider rounded">Create Key</button>
           </div>
-          <div className="space-y-3">
-            <div className="p-3 bg-[#121212] rounded border border-[#333333] flex justify-between items-center">
-              <div>
-                <p className="text-[#F5F5F5] text-sm font-mono">sk-proj-a9b8...3f21</p>
-                <p className="text-[#666666] text-xs">Created: Aug 12, 2026</p>
-              </div>
-              <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">Active</span>
+          
+          {newKey && (
+            <div className="bg-emerald-950/40 border border-emerald-900/50 p-4 rounded-lg mb-4">
+              <p className="text-emerald-400 text-xs font-bold mb-2">Please copy this key now. You will not be able to see it again!</p>
+              <code className="text-sm text-white font-mono break-all">{newKey}</code>
             </div>
+          )}
+
+          <div className="space-y-3">
+            {apiKeys.map(k => (
+              <div key={k.id} className="p-3 bg-[#121212] rounded border border-[#333333] flex justify-between items-center">
+                <div>
+                  <p className="text-[#F5F5F5] text-sm font-mono">{k.key_value.substring(0, 12)}...{k.key_value.substring(k.key_value.length - 4)}</p>
+                  <p className="text-[#666666] text-[10px]">Created: {new Date(k.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex gap-3 items-center">
+                  <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded font-bold uppercase">Active</span>
+                  <button onClick={() => handleRevokeApiKey(k.id)} className="text-[#666666] hover:text-red-400 transition-colors" title="Revoke Key"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </div>
+            ))}
+            {apiKeys.length === 0 && <p className="text-xs text-[#666666] italic">No active API keys.</p>}
           </div>
         </div>
         
@@ -417,7 +496,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       </div>
       
-      {/* Show Standard Usage Breakdown too for Developers */}
       <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2 mt-8">
         API Usage Overview
       </h2>
@@ -434,7 +512,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return (
       <>
         <div className="flex justify-between items-end mb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Credits Used</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Credits Used vs Allocated Limit</span>
           <span className="text-lg font-mono text-[#F5F5F5]">€{totalCredits.toFixed(4)} <span className="text-sm text-[#666666]">/ €{limit.toFixed(2)}</span></span>
         </div>
         <div className="w-full h-2 bg-[#252525] rounded-full overflow-hidden mb-4">
@@ -467,7 +545,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           )}
         </div>
 
-        <p className="text-xs text-emerald-400 mt-2 font-semibold">€{(limit - totalCredits).toFixed(4)} credits remaining this month</p>
+        <p className="text-xs text-emerald-400 mt-2 font-semibold">€{(limit - totalCredits).toFixed(4)} allocated credits remaining</p>
       </>
     );
   };
@@ -477,24 +555,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       {renderInvitationsList()}
       {renderEnterpriseLink()}
       
+      {!profile?.enterpriseId && (
+        <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between mb-8">
+          <div>
+            <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Available Wallet Balance</p>
+            <p className="text-3xl font-mono text-emerald-400">€{walletBalance.toFixed(2)}</p>
+            <button onClick={handleTopUp} className="text-[10px] mt-2 font-bold uppercase text-[#FFD54F] hover:underline">Top Up Wallet</button>
+          </div>
+          <Wallet className="w-8 h-8 text-emerald-400/20" />
+        </div>
+      )}
+
       <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-8 text-center shadow-lg mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none"></div>
         <h2 className="text-2xl font-bold text-[#F5F5F5] mb-2">
           {profile?.enterpriseId ? 'Enterprise Plan' : 'Free Trial Tier'}
         </h2>
         <p className="text-[#BDBDBD] text-sm mb-8 max-w-lg mx-auto">
-          {profile?.enterpriseId ? 'Your API requests and chat sessions are sponsored by your organization.' : 'You are currently on the free trial. You have 10 Credits (equivalent to €10) to explore Anacleto AI.'}
+          {profile?.enterpriseId ? 'Your API requests and chat sessions are sponsored by your organization.' : 'You are currently on the free trial. You have an initial Wallet Balance to explore Anacleto AI.'}
         </p>
 
         <div className="bg-[#121212] border border-[#333333] rounded-xl p-6 max-w-md mx-auto mb-8 text-left shadow-lg">
           {renderUsageMetrics()}
         </div>
-
-        {!profile?.enterpriseId && (
-          <button className="px-6 py-3 bg-[#FFD54F] text-black font-bold uppercase tracking-wider rounded-lg hover:bg-[#FFCA28] transition-colors shadow-lg shadow-[#FFD54F]/20">
-            Upgrade Plan
-          </button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

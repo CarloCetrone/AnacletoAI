@@ -165,16 +165,63 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    let userId = "";
 
-    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
-    if (userError || !user) {
-      throw new Error("Unauthorized: " + (userError?.message || "User not found"));
+    // Check if it's an API Key or JWT
+    if (authHeader.startsWith("Bearer sk-proj-")) {
+      const apiKey = authHeader.replace("Bearer ", "");
+      const { data: keyData, error: keyError } = await adminSupabase
+        .from("api_keys")
+        .select("user_id")
+        .eq("key_value", apiKey)
+        .single();
+        
+      if (keyError || !keyData) throw new Error("Unauthorized: Invalid API Key");
+      userId = keyData.user_id;
+
+      // Update last_used_at asynchronously
+      adminSupabase.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("key_value", apiKey).then();
+    } else {
+      const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Unauthorized: " + (userError?.message || "User not found"));
+      }
+      userId = user.id;
     }
 
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Fetch profile to check wallets
+    const { data: profile, error: profileError } = await adminSupabase
+      .from("profiles")
+      .select("credit_balance, credit_limit, enterprise_id")
+      .eq("id", userId)
+      .single();
+
+    if (profileError || !profile) throw new Error("User profile not found");
+
+    let activeEnterpriseId = profile.enterprise_id;
+    let payingWalletBalance = profile.credit_balance;
+
+    if (activeEnterpriseId) {
+      // Enterprise pays
+      const { data: entProfile } = await adminSupabase
+        .from("profiles")
+        .select("credit_balance")
+        .eq("id", activeEnterpriseId)
+        .single();
+      if (entProfile) payingWalletBalance = entProfile.credit_balance;
+
+      if (payingWalletBalance <= 0) {
+        throw new Error("Payment Required: Enterprise wallet balance is empty.");
+      }
+    } else {
+      if (payingWalletBalance <= 0) {
+        throw new Error("Payment Required: Your wallet balance is empty. Please top-up.");
+      }
+    }
 
     const now = new Date();
     const currentDateStr = now.toISOString().split("T")[0];
@@ -335,12 +382,20 @@ Only use this tool if the user is asking about current events, facts, or informa
           const aiResponseText = currentMessages.filter(m => m.role === 'assistant').map(m => m.content).join(' ');
           finalOutputTokens = Math.ceil(aiResponseText.length / 4) + 150; // Add some base for reasoning overhead
 
-          // Save Token Usage to Database asynchronously
-          adminSupabase.from("token_usage").insert({
-            user_id: user.id,
-            model_name: modelDisplayName,
-            input_tokens: finalInputTokens,
-            output_tokens: finalOutputTokens
+          // Calculate cost
+          const isLarge = modelDisplayName.toLowerCase().includes('large');
+          const inputCost = isLarge ? 5 : 1;
+          const outputCost = isLarge ? 10 : 2;
+          const totalCost = (finalInputTokens * inputCost + finalOutputTokens * outputCost) / 1000000;
+
+          // Save Token Usage to Database asynchronously and deduct from wallet
+          adminSupabase.rpc('log_token_usage', {
+            p_user_id: userId,
+            p_model: modelDisplayName,
+            p_input_tokens: finalInputTokens,
+            p_output_tokens: finalOutputTokens,
+            p_cost: totalCost,
+            p_enterprise_id: activeEnterpriseId
           }).then(({ error }) => {
             if (error) console.error("Failed to log token usage:", error);
           });
