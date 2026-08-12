@@ -217,6 +217,17 @@ serve(async (req) => {
       if (payingWalletBalance <= 0) {
         throw new Error("Payment Required: Enterprise wallet balance is empty.");
       }
+
+      // Check member specific limit
+      const { data: withinLimit, error: limitError } = await adminSupabase.rpc('check_member_limit', {
+        p_user_id: userId,
+        p_enterprise_id: activeEnterpriseId
+      });
+
+      if (limitError) console.error("Failed to check member limit:", limitError);
+      if (withinLimit === false) {
+        throw new Error("Payment Required: You have exceeded the monthly credit limit allocated by your Enterprise.");
+      }
     } else {
       if (payingWalletBalance <= 0) {
         throw new Error("Payment Required: Your wallet balance is empty. Please top-up.");

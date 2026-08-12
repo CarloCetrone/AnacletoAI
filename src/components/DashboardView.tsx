@@ -96,7 +96,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           const { data, error } = await supabase
             .from('token_usage')
             .select('model_name, input_tokens, output_tokens')
-            .eq('user_id', user.id);
+            .eq('user_id', user.id)
+            .is('enterprise_id', null);
 
           if (!error && data) {
             const stats: Record<string, { input: number, output: number, credits: number }> = {};
