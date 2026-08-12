@@ -281,7 +281,7 @@ export const SecureChatView: React.FC = () => {
             if (dataStr) {
               try {
                 const eventData = JSON.parse(dataStr);
-                } else if (eventType === 'text' && eventData.chunk) {
+                if (eventType === 'text' && eventData.chunk) {
                   targetBufferRef.current[aiMsgId] = (targetBufferRef.current[aiMsgId] || '') + eventData.chunk;
                 } else if (eventType === 'tool_start') {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
