@@ -231,7 +231,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   cursor={{ fill: '#252525' }}
                   contentStyle={{ backgroundColor: '#121212', border: '1px solid #333333', borderRadius: '8px', color: '#F5F5F5' }}
                   itemStyle={{ color: '#FFD54F', fontWeight: 'bold' }}
-                  formatter={(value: number) => [`€${value.toFixed(4)}`, 'Credits Used']}
+                  formatter={(value: any) => [`€${Number(value).toFixed(4)}`, 'Credits Used']}
                 />
                 <Bar dataKey="Credits" fill="#FFD54F" radius={[4, 4, 0, 0]} />
               </BarChart>
