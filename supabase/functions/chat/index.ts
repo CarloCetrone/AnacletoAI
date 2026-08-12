@@ -224,22 +224,53 @@ serve(async (req) => {
               max_tokens: 4096,
               tools: activeTools.length > 0 ? activeTools : undefined,
               tool_choice: activeTools.length > 0 ? "auto" : undefined,
-              stream: false, // For simpler tool loop, we do non-streaming rounds until final response
+              stream: true,
+              stream_options: { include_usage: true }
             };
 
-            const response = await openai.chat.completions.create(streamOptions);
-            const message = response.choices[0].message;
+            const responseStream = await openai.chat.completions.create(streamOptions) as any;
             
-            if (response.usage) {
-              finalInputTokens += response.usage.prompt_tokens;
-              finalOutputTokens += response.usage.completion_tokens;
+            let fullContent = "";
+            let toolCallsMap: Record<number, any> = {};
+
+            for await (const chunk of responseStream) {
+               if (chunk.usage) {
+                  finalInputTokens += chunk.usage.prompt_tokens;
+                  finalOutputTokens += chunk.usage.completion_tokens;
+               }
+
+               const delta = chunk.choices?.[0]?.delta;
+               if (!delta) continue;
+
+               if (delta.content) {
+                  fullContent += delta.content;
+                  sendEvent("text", { chunk: delta.content });
+               }
+
+               if (delta.tool_calls) {
+                  for (const tc of delta.tool_calls) {
+                     if (!toolCallsMap[tc.index]) {
+                        toolCallsMap[tc.index] = { id: tc.id, type: "function", function: { name: tc.function?.name || "", arguments: "" } };
+                     }
+                     if (tc.function?.arguments) {
+                        toolCallsMap[tc.index].function.arguments += tc.function.arguments;
+                     }
+                  }
+               }
             }
 
-            if (message.tool_calls && message.tool_calls.length > 0) {
-              currentMessages.push(message); // append assistant message with tool_calls
+            const assembledToolCalls = Object.values(toolCallsMap);
+
+            if (assembledToolCalls.length > 0) {
+              currentMessages.push({ role: "assistant", content: fullContent || null, tool_calls: assembledToolCalls });
               
-              for (const toolCall of message.tool_calls) {
-                const args = JSON.parse(toolCall.function.arguments);
+              for (const toolCall of assembledToolCalls as any[]) {
+                let args;
+                try {
+                   args = JSON.parse(toolCall.function.arguments);
+                } catch(e) {
+                   args = {};
+                }
                 let toolResultStr = "";
 
                 sendEvent("tool_start", { name: toolCall.function.name, args });
@@ -276,18 +307,7 @@ serve(async (req) => {
                 sendEvent("tool_end", { name: toolCall.function.name });
               }
             } else {
-              // No more tool calls, stream final response
               runComplete = true;
-              
-              // We could do a final streaming call here to stream the text to the user,
-              // but since we already got the message in this non-streaming chunk, we'll just send it.
-              // A better UX would be to switch back to stream: true for the final response.
-              
-              // Let's do a final streaming call for the actual text response if it was empty, 
-              // but if the model already responded with text, we stream it directly.
-              if (message.content) {
-                 sendEvent("text", { chunk: message.content });
-              }
             }
           }
 

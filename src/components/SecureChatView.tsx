@@ -4,8 +4,10 @@ import {
   Paperclip, Send, ShieldCheck, MessageSquare, Plus, Bot, User, 
   ChevronRight, Sparkles, Lock, Loader2, Zap, AlertCircle, Copy, Check, 
   PanelLeftOpen, PanelLeftClose, FileText, Globe, Brain, Layout, 
-  ChevronDown, ChevronUp, Cpu, Trash2, Image as ImageIcon, Box, BookOpen, Download, Maximize2
+  ChevronDown, ChevronUp, Cpu, Trash2, Image as ImageIcon, Box, BookOpen, Download, Maximize2, XCircle, Pencil
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
 import { useAuth } from '@/context/AuthContext';
@@ -71,20 +73,30 @@ export const SecureChatView: React.FC = () => {
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
 
-  const [sessions, setSessions] = useState<ChatSession[]>([
-    {
-      id: 'session-1',
-      title: 'New Conversation',
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      messages: [{
-        id: 'welcome-msg',
-        sender: 'ai',
-        text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Anacleto-Large'
-      }]
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    if (typeof window !== 'undefined') {
+       const saved = localStorage.getItem('anacleto_sessions');
+       if (saved) return JSON.parse(saved);
     }
-  ]);
+    return [
+      {
+        id: 'session-1',
+        title: 'New Conversation',
+        createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: [{
+          id: 'welcome-msg',
+          sender: 'ai',
+          text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          modelUsed: 'Anacleto-Large'
+        }]
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('anacleto_sessions', JSON.stringify(sessions));
+  }, [sessions]);
 
   const [activeSessionId, setActiveSessionId] = useState<string>('session-1');
   const [inputMessage, setInputMessage] = useState('');
@@ -97,6 +109,7 @@ export const SecureChatView: React.FC = () => {
   const targetBufferRef = useRef<{ [msgId: string]: string }>({});
   const displayedTextRef = useRef<{ [msgId: string]: string }>({});
   const isStreamingRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const lastStepTimeRef = useRef<number>(0);
   const animationFrameIdRef = useRef<number | null>(null);
   const loadedSessionIds = useRef<Set<string>>(new Set());
@@ -150,6 +163,18 @@ export const SecureChatView: React.FC = () => {
         setExtractedFileText("Failed to extract file text.");
       }
     }
+  };
+
+  const handleEditMessage = (msg: ChatMessage) => {
+    setInputMessage(msg.text);
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeSessionId) return s;
+      const msgIndex = s.messages.findIndex(m => m.id === msg.id);
+      return { ...s, messages: s.messages.slice(0, msgIndex) };
+    }));
+    setTimeout(() => {
+       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -243,12 +268,14 @@ export const SecureChatView: React.FC = () => {
     };
     animationFrameIdRef.current = requestAnimationFrame(runAsymptoticStreamLoop);
 
+    abortControllerRef.current = new AbortController();
     try {
       const historyContext = activeSession.messages.map((m) => ({ sender: m.sender, text: m.text, id: m.id }));
       const res = await fetch(SUPABASE_FUNCTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ message: userMsgText, attachment: attachedName || '', fileContent: attachedContent || '', webSearch: webSearchEnabled, deepReasoning: deepReasoningEnabled, imageGen: imageGenEnabled, model3D: model3DEnabled, pdfGen: pdfGenEnabled, slideshowGen: slideshowGenEnabled, model: activeModelKey, history: historyContext })
+        body: JSON.stringify({ message: userMsgText, attachment: attachedName || '', fileContent: attachedContent || '', webSearch: webSearchEnabled, deepReasoning: deepReasoningEnabled, imageGen: imageGenEnabled, model3D: model3DEnabled, pdfGen: pdfGenEnabled, slideshowGen: slideshowGenEnabled, model: activeModelKey, history: historyContext }),
+        signal: abortControllerRef.current.signal
       });
 
       if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -311,6 +338,11 @@ export const SecureChatView: React.FC = () => {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, searchSummary: eventData.summary, sources: eventData.sources } : m)
                   } : s));
+                } else if (eventType === 'done') {
+                   // Ensure loading is set to false even if no text was streamed (e.g. image generated)
+                   runAsymptoticStreamLoop(); // flush text
+                   isStreamingRef.current = false;
+                   setLoading(false);
                 } else if (eventType === 'error') {
                   throw new Error(eventData.message);
                 }
@@ -321,6 +353,7 @@ export const SecureChatView: React.FC = () => {
           }
         }
       }
+
     } catch (err: any) {
       console.error('Chat API Error:', err);
       targetBufferRef.current[aiMsgId] = `API Error: ${err.message || err}`;
@@ -460,6 +493,9 @@ export const SecureChatView: React.FC = () => {
               {msg.images.map((imgBase64, idx) => (
                  <div key={idx} className="relative group rounded-xl overflow-hidden border border-[#333333] shadow-lg">
                    <img src={`data:image/jpeg;base64,${imgBase64}`} alt="Generated Content" className="w-64 h-64 object-cover" />
+                   <a href={`data:image/jpeg;base64,${imgBase64}`} download={`generated_image_${idx}.jpg`} className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">
+                     <Download className="w-4 h-4" />
+                   </a>
                  </div>
               ))}
            </div>
@@ -510,28 +546,32 @@ export const SecureChatView: React.FC = () => {
            </div>
         )}
 
-        {rawParts.map((part, idx) => {
-          if (!part) return null;
-          if (part.startsWith('```')) {
-            let codeStr = part.slice(3).replace(/```$/, '');
-            const firstLineEnd = codeStr.indexOf('\n');
-            const language = firstLineEnd !== -1 ? codeStr.slice(0, firstLineEnd).trim() : '';
-            const codeContent = firstLineEnd !== -1 ? codeStr.slice(firstLineEnd + 1) : codeStr;
-
-            return (
-              <div key={idx} className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
-                <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
-                  <span className="uppercase font-semibold tracking-wider">{language || 'code'}</span>
-                  <button onClick={() => copyToClipboard(codeContent, `code-${idx}`)} className="flex items-center gap-1 hover:text-[#FFD54F] transition-colors text-[11px]">
-                    <Copy className="w-3.5 h-3.5" /> Copy Code
-                  </button>
-                </div>
-                <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed"><code>{codeContent}</code></pre>
-              </div>
-            );
-          }
-          return <span key={idx} className="whitespace-pre-wrap leading-relaxed">{part}</span>;
-        })}
+        {cleanText && (
+          <div className="prose prose-invert prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent max-w-none text-[13px] sm:text-sm text-current">
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({node, inline, className, children, ...props}: any) {
+                  const match = /language-(\w+)/.exec(className || '')
+                  return !inline && match ? (
+                    <div className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
+                      <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
+                        <span className="uppercase font-semibold tracking-wider">{match[1]}</span>
+                      </div>
+                      <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed">
+                        <code className={className} {...props}>{children}</code>
+                      </pre>
+                    </div>
+                  ) : (
+                    <code className="bg-black/20 px-1.5 py-0.5 rounded font-mono font-bold" {...props}>{children}</code>
+                  )
+                }
+              }}
+            >
+              {cleanText}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
     );
   };
@@ -609,8 +649,13 @@ export const SecureChatView: React.FC = () => {
                 <div>{renderMessageContent(msg)}</div>
               </div>
               {msg.sender === 'user' && (
-                <div className="w-9 h-9 rounded-xl bg-[#252525] border border-[#333333] flex items-center justify-center text-[#F5F5F5] flex-shrink-0 shadow-md">
-                  <User className="w-5 h-5" />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-[#252525] border border-[#333333] flex items-center justify-center text-[#F5F5F5] flex-shrink-0 shadow-md">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <button onClick={() => handleEditMessage(msg)} className="p-1.5 rounded-full text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors opacity-0 group-hover:opacity-100" title="Edit Message">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>
@@ -645,8 +690,16 @@ export const SecureChatView: React.FC = () => {
                 <button onClick={() => { setSelectedFile(null); setExtractedFileText(''); }} className="text-[#888] hover:text-white ml-2">×</button>
               </div>
             )}
-            <form onSubmit={handleSendMessage} className="relative flex items-center">
-              <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+            <div className="relative">
+              {loading && (
+                <div className="absolute -top-12 left-1/2 -translate-x-1/2">
+                  <button type="button" onClick={() => abortControllerRef.current?.abort()} className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-950/80 border border-red-500/50 text-red-200 text-xs font-bold hover:bg-red-900 transition-colors shadow-lg backdrop-blur-sm">
+                    <XCircle className="w-3.5 h-3.5" /> Stop Generation
+                  </button>
+                </div>
+              )}
+              <form onSubmit={handleSendMessage} className="relative flex items-center">
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute left-2 p-2.5 rounded-xl text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors"><Paperclip className="w-5 h-5" /></button>
               <textarea
                 rows={1} value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
@@ -658,6 +711,7 @@ export const SecureChatView: React.FC = () => {
               </button>
             </form>
           </div>
+        </div>
           <div className="flex items-center justify-center text-[10px] text-[#666] mt-3 font-mono">
             <span className="flex items-center gap-1.5 uppercase tracking-wider"><Sparkles className="w-3 h-3 text-[#FFD54F]/70" /> Multimodal Engine Sandbox</span>
           </div>
