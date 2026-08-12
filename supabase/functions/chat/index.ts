@@ -57,7 +57,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, history, attachment, fileContent, deepReasoning } = await req.json();
+    const { message, history, attachment, fileContent, deepReasoning, webSearch, model } = await req.json();
 
     // Authenticate user via Supabase JWT
     const authHeader = req.headers.get("Authorization");
