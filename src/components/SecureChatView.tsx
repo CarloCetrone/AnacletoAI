@@ -9,10 +9,6 @@ import {
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
 import { useAuth } from '@/context/AuthContext';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Initialize PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 // CSS for LaTeX
 import 'katex/dist/katex.min.css';
@@ -126,6 +122,12 @@ export const SecureChatView: React.FC = () => {
       
       try {
         if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+          // Dynamically import pdfjs-dist to avoid SSR Iterator errors in Node 20
+          const pdfjsLib = await import('pdfjs-dist');
+          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+          }
+          
           const arrayBuffer = await file.arrayBuffer();
           const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
           let fullText = '';
