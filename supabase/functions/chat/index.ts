@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import OpenAI from "https://esm.sh/openai@4.28.0";
 
 const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "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";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
@@ -122,7 +123,12 @@ serve(async (req) => {
         sendEvent("status", { message: "Thinking..." });
 
         try {
-          const requestBody: any = {
+          const openai = new OpenAI({
+            apiKey: NVIDIA_API_KEY,
+            baseURL: NVIDIA_BASE_URL,
+          });
+
+          const streamOptions: any = {
             model: MODEL_NAME,
             messages: currentMessages,
             temperature: 1,
@@ -132,84 +138,47 @@ serve(async (req) => {
           };
 
           if (deepReasoning) {
-             requestBody.chat_template_kwargs = { enable_thinking: true };
-             requestBody.reasoning_budget = 16384;
+             streamOptions.chat_template_kwargs = { enable_thinking: true };
+             streamOptions.reasoning_budget = 16384;
           } else {
-             requestBody.chat_template_kwargs = { enable_thinking: false };
+             streamOptions.chat_template_kwargs = { enable_thinking: false };
           }
 
-          const response = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${NVIDIA_API_KEY}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(requestBody)
-          });
+          const completion = await openai.chat.completions.create(streamOptions);
 
-          if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Nvidia API Error: ${response.status} ${errText}`);
-          }
-          if (!response.body) throw new Error("No response body from Nvidia API");
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder("utf-8");
-          let buffer = "";
-          
           let reasoningStarted = false;
           let reasoningEnded = false;
-          
           let finalInputTokens = 0;
           let finalOutputTokens = 0;
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          for await (const chunk of completion) {
+            // Capture usage if available
+            if (chunk.usage) {
+              finalInputTokens = chunk.usage.prompt_tokens || finalInputTokens;
+              finalOutputTokens = chunk.usage.completion_tokens || finalOutputTokens;
+            }
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
+            const delta = chunk.choices?.[0]?.delta as any || {};
 
-            for (const line of lines) {
-              const trimmedLine = line.trim();
-              if (trimmedLine.startsWith("data: ") && trimmedLine !== "data: [DONE]") {
-                try {
-                  const parsed = JSON.parse(trimmedLine.slice(6));
-                  
-                  // Capture token usage if available in stream
-                  if (parsed.usage) {
-                     finalInputTokens = parsed.usage.prompt_tokens || finalInputTokens;
-                     finalOutputTokens = parsed.usage.completion_tokens || finalOutputTokens;
-                  }
-
-                  const delta = parsed.choices?.[0]?.delta || {};
-                  
-                  // Handle Reasoning Stream via extra_body format
-                  if (delta.reasoning_content) {
-                    if (!reasoningStarted) {
-                      reasoningStarted = true;
-                      sendEvent("text", { chunk: "<think>\n" });
-                    }
-                    sendEvent("text", { chunk: delta.reasoning_content });
-                  } else if (reasoningStarted && !reasoningEnded && delta.content) {
-                    // Reasoning has ended, text has begun
-                    reasoningEnded = true;
-                    sendEvent("text", { chunk: "\n</think>\n\n" });
-                  }
-                  
-                  // Handle Standard Text Stream
-                  if (delta.content) {
-                    sendEvent("text", { chunk: delta.content });
-                  }
-                  
-                } catch (e) {
-                   // ignore partial json
-                }
+            // Handle Reasoning Stream
+            if (delta.reasoning_content) {
+              if (!reasoningStarted) {
+                reasoningStarted = true;
+                sendEvent("text", { chunk: "<think>\n" });
               }
+              sendEvent("text", { chunk: delta.reasoning_content });
+            } else if (reasoningStarted && !reasoningEnded && delta.content) {
+              // Reasoning has ended, text has begun
+              reasoningEnded = true;
+              sendEvent("text", { chunk: "\n</think>\n\n" });
+            }
+
+            // Handle Standard Text Stream
+            if (delta.content) {
+              sendEvent("text", { chunk: delta.content });
             }
           }
-          
+
           if (reasoningStarted && !reasoningEnded) {
              sendEvent("text", { chunk: "\n</think>\n\n" });
           }
