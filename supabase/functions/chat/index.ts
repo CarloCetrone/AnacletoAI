@@ -1,136 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const RUNPOD_API_KEY = Deno.env.get("RUNPOD_API_KEY") || "";
-const ENDPOINT_LARGE = Deno.env.get("RUNPOD_ENDPOINT_ID_LARGE") || "";
-const ENDPOINT_MEDIUM = Deno.env.get("RUNPOD_ENDPOINT_ID_MEDIUM") || "";
-const ENDPOINT_SMALL = Deno.env.get("RUNPOD_ENDPOINT_ID_SMALL") || "";
+const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "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";
+const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
+const MODEL_NAME = "nvidia/nemotron-3.5-lightning-30b-a3b";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Tool: Clean Search Query
-function cleanSearchQuery(rawQuery: string): string {
-  const cleaned = rawQuery
-    .replace(/^["'\s]+|["'\s]+$/g, "")
-    .replace(/\b(population|inhabitants|people|how many|how much|number of|who is|what is|when was|where is|popolazione|abitanti|quanti|live|living|inhabit|inhabits|location|find|info|search|map|coordinates|details|place|region|italy|country|city|town|village|a|the|in|of|about)\b/gi, "")
-    .replace(/[,;:]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned.length > 1 ? cleaned : rawQuery.replace(/^["'\s]+|["'\s]+$/g, "").trim();
-}
-
-// Tool: Wikipedia Search Fallback
-async function searchWikipedia(query: string) {
-  const sources: string[] = [];
-  const search_results: string[] = [];
-  try {
-    const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
-    const wikiRes = await fetch(wikiUrl);
-    if (wikiRes.ok) {
-      const wikiData = await wikiRes.json();
-      const results = wikiData.query?.search || [];
-      const topTitles = results.slice(0, 3).map((r: any) => r.title);
-      
-      if (topTitles.length > 0) {
-        const extractUrl = `https://it.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles=${encodeURIComponent(topTitles.join("|"))}&format=json&origin=*`;
-        const extractRes = await fetch(extractUrl);
-        if (extractRes.ok) {
-          const extractData = await extractRes.json();
-          const pagesObj = extractData.query?.pages || {};
-          
-          for (const pageId in pagesObj) {
-            const page = pagesObj[pageId];
-            if (page.title && page.extract) {
-              const cleanExtract = page.extract.replace(/\s+/g, " ").trim();
-              const pageUrl = `https://it.wikipedia.org/wiki/${encodeURIComponent(page.title)}`;
-              if (cleanExtract.length > 20) {
-                search_results.push(`Title: ${page.title}\nSnippet: ${cleanExtract.slice(0, 1000)}\nLink: ${pageUrl}`);
-                sources.push(pageUrl);
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Wiki Error:", e);
-  }
-  return { searchSummary: search_results.join("\n\n"), sources };
-}
-
-// Main Web Search Executor
-async function executeWebSearch(rawQuery: string): Promise<{ searchSummary: string; sources: string[] }> {
-  try {
-    const search_results: string[] = [];
-    const sources: string[] = [];
-    const cleanQuery = cleanSearchQuery(rawQuery) || rawQuery;
-
-    // Try DuckDuckGo first
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery).replace(/%20/g, "+")}`;
-    const res = await fetch(searchUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      }
-    });
-
-    if (res.ok) {
-      const htmlText = await res.text();
-      const snippetMatches = htmlText.match(/<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g) || [];
-      const titleMatches = htmlText.match(/<a class="result__a[^>]*>([\s\S]*?)<\/a>/g) || [];
-
-      for (let i = 0; i < Math.min(3, snippetMatches.length); i++) {
-        const cleanSnippet = snippetMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-        let cleanTitle = titleMatches[i] ? titleMatches[i].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : "";
-        let cleanUrl = "";
-
-        if (titleMatches[i]) {
-          const hrefMatch = titleMatches[i].match(/href="([^"]+)"/i);
-          if (hrefMatch && hrefMatch[1]) {
-            cleanUrl = hrefMatch[1];
-            if (cleanUrl.includes("uddg=")) {
-              const rawUddg = cleanUrl.split("uddg=")[1]?.split("&")[0];
-              if (rawUddg) cleanUrl = decodeURIComponent(rawUddg);
-            }
-          }
-        }
-        if (cleanSnippet && cleanUrl) {
-          search_results.push(`Title: ${cleanTitle || cleanQuery}\nSnippet: ${cleanSnippet}\nLink: ${cleanUrl}`);
-          sources.push(cleanUrl);
-        }
-      }
-    }
-
-    if (search_results.length === 0) {
-      return await searchWikipedia(cleanQuery);
-    }
-    return { searchSummary: search_results.join("\n\n"), sources };
-  } catch (e) {
-    return { searchSummary: `Search error: ${String(e)}`, sources: [] };
-  }
-}
-
-// Generate an OpenAI API Chat Completion stream
-async function callOpenAI(endpoint: string, apiKey: string, messages: any[], maxTokens: number, temperature: number) {
-  const url = `https://api.runpod.ai/v2/${endpoint}/openai/v1/chat/completions`;
-  return await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "",
-      messages,
-      max_tokens: maxTokens,
-      temperature,
-      stream: true,
-      stream_options: { include_usage: true }
-    })
-  });
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -138,24 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, history, attachment, fileContent, webSearch, deepReasoning, model } = await req.json();
-
-    const targetApiKey = RUNPOD_API_KEY;
-    let targetEndpoint = ENDPOINT_LARGE;
-    let modelDisplayName = "Anacleto-Large";
-
-    if (model === "anacleto-small" || model === "small") {
-      targetEndpoint = ENDPOINT_SMALL;
-      modelDisplayName = "Anacleto-Small";
-    } else if (model === "anacleto-medium" || model === "medium" || model === "anacleto-7b" || model === "7b") {
-      targetEndpoint = ENDPOINT_MEDIUM;
-      modelDisplayName = "Anacleto-Medium";
-    }
-
-    // Protect against unconfigured endpoints
-    if (!targetEndpoint) {
-       throw new Error(`Endpoint for ${modelDisplayName} is not configured on Supabase Secrets.`);
-    }
+    const { message, history, attachment, fileContent, deepReasoning } = await req.json();
 
     // Authenticate user via Supabase JWT
     const authHeader = req.headers.get("Authorization");
@@ -168,7 +29,6 @@ serve(async (req) => {
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     let userId = "";
 
-    // Check if it's an API Key or JWT
     if (authHeader.startsWith("Bearer sk-proj-")) {
       const apiKey = authHeader.replace("Bearer ", "");
       const { data: keyData, error: keyError } = await adminSupabase
@@ -179,8 +39,6 @@ serve(async (req) => {
         
       if (keyError || !keyData) throw new Error("Unauthorized: Invalid API Key");
       userId = keyData.user_id;
-
-      // Update last_used_at asynchronously
       adminSupabase.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("key_value", apiKey).then();
     } else {
       const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -206,7 +64,6 @@ serve(async (req) => {
     let payingWalletBalance = profile.credit_balance;
 
     if (activeEnterpriseId) {
-      // Enterprise pays
       const { data: entProfile } = await adminSupabase
         .from("profiles")
         .select("credit_balance")
@@ -218,7 +75,6 @@ serve(async (req) => {
         throw new Error("Payment Required: Enterprise wallet balance is empty.");
       }
 
-      // Check member specific limit
       const { data: withinLimit, error: limitError } = await adminSupabase.rpc('check_member_limit', {
         p_user_id: userId,
         p_enterprise_id: activeEnterpriseId
@@ -234,30 +90,11 @@ serve(async (req) => {
       }
     }
 
-    const now = new Date();
-    const currentDateStr = now.toISOString().split("T")[0];
-    const currentTimeStr = now.toLocaleTimeString("en-US", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
-
-    // Modern System Prompt Architecture
-    let systemPrompt = `You are ${modelDisplayName}, an advanced sovereign AI developed by Anacleto. 
-Current Date: ${currentDateStr}
-Current Time: ${currentTimeStr} (CEST/UTC+2)
-Identity: You are highly intelligent, factual, and strictly follow user instructions. Always answer naturally and completely. Use beautiful markdown formatting when relevant.`;
-
-    if (deepReasoning) {
-      systemPrompt += `\n[REASONING MODE ENABLED]: You must first think step-by-step internally before answering. Output all your thoughts enclosed in <think> ... </think> tags. Do not skip the thinking phase.`;
-    }
-
-    if (webSearch) {
-      systemPrompt += `\n[WEB SEARCH ENABLED]: You have access to real-time information via the tool: \`web_search("query")\`. 
-To use it, reply EXACTLY with:
-\`\`\`tool_call
-web_search("your query here")
-\`\`\`
-Only use this tool if the user is asking about current events, facts, or information you don't know natively. Wait for the SYSTEM observation after making the call. Base your final response strictly on the retrieved observation.`;
-    }
-
-    const currentMessages: any[] = [{ role: "system", content: systemPrompt }];
+    const currentMessages: any[] = [];
+    
+    // Nemotron requires strict message formatting (usually a system prompt first)
+    const systemPrompt = `You are a highly intelligent and fast AI assistant. Answer completely and naturally.`;
+    currentMessages.push({ role: "system", content: systemPrompt });
 
     if (Array.isArray(history)) {
       for (const item of history) {
@@ -285,124 +122,114 @@ Only use this tool if the user is asking about current events, facts, or informa
         sendEvent("status", { message: "Thinking..." });
 
         try {
-          let turnCount = 0;
-          const maxTurns = 3;
-          let finalAnswerComplete = false;
-          let allSources: string[] = [];
+          const requestBody: any = {
+            model: MODEL_NAME,
+            messages: currentMessages,
+            temperature: 1,
+            top_p: 0.95,
+            max_tokens: 16384,
+            stream: true,
+          };
 
-          while (turnCount < maxTurns && !finalAnswerComplete) {
-            turnCount++;
-            const response = await callOpenAI(
-              targetEndpoint,
-              targetApiKey,
-              currentMessages,
-              deepReasoning ? 2048 : 1024,
-              deepReasoning ? 0.3 : 0.6
-            );
-
-            if (!response.ok) {
-              const errText = await response.text();
-              throw new Error(`Upstream API Error: ${response.status} ${errText}`);
-            }
-
-            if (!response.body) throw new Error("No response body from Upstream API");
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-            let buffer = "";
-            let fullTurnOutput = "";
-            let toolCallDetected = false;
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-
-              for (const line of lines) {
-                const trimmedLine = line.trim();
-                if (trimmedLine.startsWith("data: ") && trimmedLine !== "data: [DONE]") {
-                  try {
-                    const parsed = JSON.parse(trimmedLine.slice(6));
-                    const token = parsed.choices?.[0]?.delta?.content || "";
-                    if (token) {
-                      fullTurnOutput += token;
-                      
-                      // Check if the stream starts generating a tool call
-                      if (webSearch && (fullTurnOutput.includes("```tool_call") || fullTurnOutput.includes("web_search"))) {
-                        toolCallDetected = true;
-                      }
-
-                      // If we are definitely not outputting a tool call, forward directly to client
-                      if (!toolCallDetected) {
-                        sendEvent("text", { chunk: token });
-                      }
-                    }
-                  } catch (e) {
-                     // ignore partial json
-                  }
-                }
-              }
-            }
-
-            // After stream completion for the turn, process tool calls if detected
-            if (toolCallDetected && fullTurnOutput.includes("web_search")) {
-              const match = fullTurnOutput.match(/web_search\("([^"]+)"\)/i);
-              if (match) {
-                const query = match[1];
-                sendEvent("status", { message: `Executing web_search("${query}")...` });
-                
-                const searchData = await executeWebSearch(query);
-                allSources.push(...searchData.sources);
-                
-                sendEvent("searchSummary", {
-                  summary: searchData.searchSummary,
-                  sources: Array.from(new Set(allSources))
-                });
-
-                currentMessages.push({ role: "assistant", content: `\`\`\`tool_call\nweb_search("${query}")\n\`\`\`` });
-                currentMessages.push({
-                  role: "user",
-                  content: `[SYSTEM OBSERVATION FOR web_search("${query}")]:\n${searchData.searchSummary || "No results."}\n\n[INSTRUCTION]: Answer the user based on the observation.`
-                });
-                
-                sendEvent("status", { message: "Synthesizing answer..." });
-              } else {
-                // False alarm, send it directly
-                sendEvent("text", { chunk: fullTurnOutput });
-                finalAnswerComplete = true;
-              }
-            } else {
-              finalAnswerComplete = true;
-            }
-            
-            // Re-check for final usage token in OpenAI stream
-            // In stream_options: { include_usage: true }, the last chunk contains a usage object
+          if (deepReasoning) {
+             requestBody.extra_body = {
+                chat_template_kwargs: { enable_thinking: true },
+                reasoning_budget: 16384
+             };
           }
 
+          const response = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${NVIDIA_API_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Nvidia API Error: ${response.status} ${errText}`);
+          }
+          if (!response.body) throw new Error("No response body from Nvidia API");
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          
+          let reasoningStarted = false;
+          let reasoningEnded = false;
+          
           let finalInputTokens = 0;
           let finalOutputTokens = 0;
 
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine.startsWith("data: ") && trimmedLine !== "data: [DONE]") {
+                try {
+                  const parsed = JSON.parse(trimmedLine.slice(6));
+                  
+                  // Capture token usage if available in stream
+                  if (parsed.usage) {
+                     finalInputTokens = parsed.usage.prompt_tokens || finalInputTokens;
+                     finalOutputTokens = parsed.usage.completion_tokens || finalOutputTokens;
+                  }
+
+                  const delta = parsed.choices?.[0]?.delta || {};
+                  
+                  // Handle Reasoning Stream via extra_body format
+                  if (delta.reasoning_content) {
+                    if (!reasoningStarted) {
+                      reasoningStarted = true;
+                      sendEvent("text", { chunk: "<think>\n" });
+                    }
+                    sendEvent("text", { chunk: delta.reasoning_content });
+                  } else if (reasoningStarted && !reasoningEnded && delta.content) {
+                    // Reasoning has ended, text has begun
+                    reasoningEnded = true;
+                    sendEvent("text", { chunk: "\n</think>\n\n" });
+                  }
+                  
+                  // Handle Standard Text Stream
+                  if (delta.content) {
+                    sendEvent("text", { chunk: delta.content });
+                  }
+                  
+                } catch (e) {
+                   // ignore partial json
+                }
+              }
+            }
+          }
+          
+          if (reasoningStarted && !reasoningEnded) {
+             sendEvent("text", { chunk: "\n</think>\n\n" });
+          }
+
           const latencyMs = Date.now() - startTime;
-          sendEvent("done", { model: modelDisplayName, latency: `${latencyMs}ms` });
+          sendEvent("done", { model: "Nemotron-3.5-30B", latency: `${latencyMs}ms` });
 
-          // Approximate tokens if usage isn't explicitly returned (fallback)
-          finalInputTokens = Math.ceil(JSON.stringify(currentMessages).length / 4);
-          const aiResponseText = currentMessages.filter(m => m.role === 'assistant').map(m => m.content).join(' ');
-          finalOutputTokens = Math.ceil(aiResponseText.length / 4) + 150; // Add some base for reasoning overhead
+          if (finalInputTokens === 0) {
+            finalInputTokens = Math.ceil(JSON.stringify(currentMessages).length / 4);
+          }
+          if (finalOutputTokens === 0) {
+            finalOutputTokens = Math.ceil((Date.now() - startTime) / 20); 
+          }
 
-          // Calculate cost
-          const isLarge = modelDisplayName.toLowerCase().includes('large');
-          const inputCost = isLarge ? 5 : 1;
-          const outputCost = isLarge ? 10 : 2;
-          const totalCost = (finalInputTokens * inputCost + finalOutputTokens * outputCost) / 1000000;
+          // Use the Anacleto-Small pricing structure for this fast model (1€ / 2€ per M)
+          const totalCost = (finalInputTokens * 1 + finalOutputTokens * 2) / 1000000;
 
-          // Save Token Usage to Database asynchronously and deduct from wallet
           adminSupabase.rpc('log_token_usage', {
             p_user_id: userId,
-            p_model: modelDisplayName,
+            p_model: "Nemotron-3.5-30B",
             p_input_tokens: finalInputTokens,
             p_output_tokens: finalOutputTokens,
             p_cost: totalCost,
