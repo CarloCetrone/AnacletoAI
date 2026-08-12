@@ -39,6 +39,8 @@ interface ChatMessage {
   images?: string[];
   models3D?: any[];
   latexBlocks?: { code: string, isSlideshow: boolean }[];
+  executedTools?: { name: string, args: any, status: 'loading' | 'done' | 'error' }[];
+  thoughts?: string;
 }
 
 interface ChatSession {
@@ -61,7 +63,7 @@ export const SecureChatView: React.FC = () => {
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   const [selectedModel, setSelectedModel] = useState<'anacleto-large' | 'anacleto-medium' | 'anacleto-small'>('anacleto-large');
-  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false);
   const [imageGenEnabled, setImageGenEnabled] = useState(false);
   const [model3DEnabled, setModel3DEnabled] = useState(false);
@@ -279,15 +281,23 @@ export const SecureChatView: React.FC = () => {
             if (dataStr) {
               try {
                 const eventData = JSON.parse(dataStr);
-                if (eventType === 'text' && eventData.chunk) {
+                } else if (eventType === 'text' && eventData.chunk) {
                   targetBufferRef.current[aiMsgId] = (targetBufferRef.current[aiMsgId] || '') + eventData.chunk;
                 } else if (eventType === 'tool_start') {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
-                    ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, activeTool: eventData.name } : m)
+                    ...s, messages: s.messages.map(m => m.id === aiMsgId ? { 
+                       ...m, 
+                       activeTool: eventData.name,
+                       executedTools: [...(m.executedTools || []), { name: eventData.name, args: eventData.args, status: 'loading' }]
+                    } : m)
                   } : s));
                 } else if (eventType === 'tool_end') {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
-                    ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, activeTool: undefined } : m)
+                    ...s, messages: s.messages.map(m => m.id === aiMsgId ? { 
+                       ...m, 
+                       activeTool: undefined,
+                       executedTools: (m.executedTools || []).map((t, idx, arr) => idx === arr.length - 1 ? { ...t, status: 'done' } : t)
+                    } : m)
                   } : s));
                 } else if (eventType === 'image_generated') {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
@@ -354,10 +364,18 @@ export const SecureChatView: React.FC = () => {
   };
 
   const renderMessageContent = (msg: ChatMessage) => {
-    const text = msg.text;
     const msgId = msg.id;
+    let cleanText = msg.text || '';
+    let thoughtsText = msg.thoughts || '';
+    
+    // Extract thought tags
+    const thoughtMatch = cleanText.match(/<thought>([\s\S]*?)<\/thought>/i) || cleanText.match(/<thought>([\s\S]*?)$/i);
+    if (thoughtMatch) {
+       thoughtsText = thoughtMatch[1];
+       cleanText = cleanText.replace(/<thought>[\s\S]*?(<\/thought>|$)/i, '').trim();
+    }
 
-    if (!text && !msg.searchSummary && !msg.activeTool && !msg.images && !msg.models3D && !msg.latexBlocks) {
+    if (!cleanText && !thoughtsText && !msg.searchSummary && !msg.activeTool && (!msg.executedTools || msg.executedTools.length === 0) && !msg.images && !msg.models3D && !msg.latexBlocks) {
       return (
         <div className="flex items-center gap-2 text-xs text-[#BDBDBD] py-1 font-mono">
           <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
@@ -366,7 +384,7 @@ export const SecureChatView: React.FC = () => {
       );
     }
 
-    const rawParts = text.split(/(```[\s\S]*?(?:```|$))/g);
+    const rawParts = cleanText.split(/(```[\s\S]*?(?:```|$))/g);
 
     return (
       <div className="space-y-3">
@@ -374,6 +392,51 @@ export const SecureChatView: React.FC = () => {
           <div className="flex items-center gap-2 text-xs text-[#FFD54F] py-1.5 px-3 rounded bg-[#FFD54F]/10 font-mono border border-[#FFD54F]/20 mb-2">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="uppercase font-semibold tracking-wider">Executing {msg.activeTool.replace('_', ' ')}...</span>
+          </div>
+        )}
+
+        {msg.executedTools && msg.executedTools.length > 0 && (
+          <div className="rounded-lg bg-[#121212] border border-[#FFD54F]/30 text-xs font-mono overflow-hidden my-2">
+            <button
+              onClick={() => setOpenSearchId(openSearchId === msgId ? null : msgId)}
+              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#BDBDBD] transition-colors"
+            >
+              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-[#FFD54F]">
+                <Cpu className="w-3.5 h-3.5" /> Executed Tools ({msg.executedTools.length})
+              </span>
+              {openSearchId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {openSearchId === msgId && (
+              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed flex flex-col gap-2">
+                {msg.executedTools.map((t, idx) => (
+                   <div key={idx} className="flex flex-col gap-1 border-b border-[#333333]/50 pb-2 mb-1 last:border-0 last:mb-0 last:pb-0">
+                      <span className="text-[#FFD54F] font-bold capitalize">{t.name.replace('_', ' ')}</span>
+                      <span className="opacity-70 text-[10px] break-all">{JSON.stringify(t.args)}</span>
+                      {t.status === 'loading' && <span className="flex items-center gap-1 text-blue-400 text-[10px] mt-1"><Loader2 className="w-3 h-3 animate-spin"/> Running...</span>}
+                      {t.status === 'done' && <span className="flex items-center gap-1 text-emerald-400 text-[10px] mt-1"><Check className="w-3 h-3"/> Completed</span>}
+                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {thoughtsText && (
+          <div className="rounded-lg bg-[#121212] border border-blue-500/30 text-xs font-mono overflow-hidden my-2">
+            <button
+              onClick={() => setOpenThinkId(openThinkId === msgId ? null : msgId)}
+              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#BDBDBD] transition-colors"
+            >
+              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-blue-400">
+                <Brain className="w-3.5 h-3.5" /> Reasoning
+              </span>
+              {openThinkId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {openThinkId === msgId && (
+              <div className="p-3 text-blue-100 bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
+                {thoughtsText}
+              </div>
+            )}
           </div>
         )}
 
@@ -434,11 +497,8 @@ export const SecureChatView: React.FC = () => {
                        {block.isSlideshow ? 'Beamer Presentation' : 'LaTeX Document Rendering'}
                      </span>
                      <button onClick={() => {
-                       const newWin = window.open('', '_blank');
-                       if (newWin) {
-                         newWin.document.write(`<html><head><title>LaTeX Export</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"></head><body style="padding:40px;font-family:serif;"><div><h2>Source LaTeX:</h2><pre style="background:#eee;padding:15px;border-radius:5px;white-space:pre-wrap;">${block.code}</pre></div><script>window.print();</script></body></html>`);
-                         newWin.document.close();
-                       }
+                       const pdfUrl = `https://latexonline.cc/compile?text=${encodeURIComponent(block.code)}`;
+                       window.open(pdfUrl, '_blank');
                      }} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD54F] text-black text-xs font-bold rounded hover:bg-[#ffc107] transition-colors">
                        <Download className="w-3.5 h-3.5"/> PDF Export
                      </button>

@@ -42,7 +42,7 @@ async function executeGenerateImage(prompt: string, apiKey: string): Promise<any
       },
       body: JSON.stringify({
         prompt: prompt,
-        image: [""],
+        mode: "Image Generation",
         width: 1024,
         height: 1024,
         seed: Math.floor(Math.random() * 100000),
@@ -69,11 +69,8 @@ async function executeGenerate3DModel(prompt: string, apiKey: string): Promise<a
       },
       body: JSON.stringify({
         prompt: prompt,
-        slat_cfg_scale: 3,
-        ss_cfg_scale: 7.5,
-        slat_sampling_steps: 25,
-        ss_sampling_steps: 25,
-        seed: Math.floor(Math.random() * 100000)
+        seed: Math.floor(Math.random() * 100000),
+        output_format: "glb"
       })
     });
     if (!res.ok) throw new Error(`3D Gen Error: ${await res.text()}`);
@@ -251,13 +248,17 @@ serve(async (req) => {
 
                 if (toolCall.function.name === "web_search") {
                   toolResultStr = await executeTavilySearch(args.query, tavilyKey);
+                  sendEvent("searchSummary", { summary: `Web search executed for "${args.query}"`, sources: [] });
                 } else if (toolCall.function.name === "generate_image") {
                   const res = await executeGenerateImage(args.prompt, NVIDIA_API_KEY);
                   toolResultStr = JSON.stringify(res);
-                  // Optionally send an event specifically for image to render it immediately
-                  if (res.image) {
-                     sendEvent("image_generated", { base64: res.image[0] });
+                  
+                  // The NVIDIA API returns either { image: "base64..." } or { data: [{ b64_json: "..." }] }
+                  const b64 = res.image || (res.data && res.data[0] && res.data[0].b64_json);
+                  if (b64) {
+                     sendEvent("image_generated", { base64: b64 });
                   }
+
                 } else if (toolCall.function.name === "generate_3d_model") {
                   const res = await executeGenerate3DModel(args.prompt, NVIDIA_API_KEY);
                   toolResultStr = JSON.stringify(res);
