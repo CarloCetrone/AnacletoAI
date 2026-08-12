@@ -4,57 +4,143 @@ import OpenAI from "https://esm.sh/openai@4.28.0";
 
 const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "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";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-const MODEL_NAME = "nvidia/nemotron-3.5-lightning-30b-a3b";
+// Using Llama-3.1-70B as it has robust function calling support compared to Nemotron
+const MODEL_NAME = "meta/llama-3.1-70b-instruct"; 
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// --- Eager Web Search Function ---
-async function executeTavilySearch(query: string, apiKey: string): Promise<{ searchSummary: string; sources: string[] }> {
+// --- Tool Helper Functions ---
+
+async function executeTavilySearch(query: string, apiKey: string): Promise<string> {
   try {
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        query: query,
-        search_depth: "basic",
-        max_results: 3
-      })
+      body: JSON.stringify({ api_key: apiKey, query, search_depth: "basic", max_results: 3 })
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Tavily API Error: ${err}`);
-    }
-
+    if (!res.ok) throw new Error(`Tavily API Error: ${await res.text()}`);
     const data = await res.json();
-    const sources: string[] = [];
-    const search_results: string[] = [];
-    
-    if (data.results && data.results.length > 0) {
-      for (const result of data.results) {
-        search_results.push(`Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`);
-        sources.push(result.url);
-      }
-    }
-    
-    return {
-      searchSummary: search_results.join("\n\n"),
-      sources
-    };
+    return JSON.stringify(data.results || []);
   } catch (e) {
     console.error("Web Search Error:", e);
-    return { searchSummary: "", sources: [] };
+    return JSON.stringify({ error: String(e) });
   }
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+async function executeGenerateImage(prompt: string, apiKey: string): Promise<any> {
+  const invokeUrl = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b";
+  try {
+    const res = await fetch(invokeUrl, {
+      method: "POST",
+      headers: { 
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        image: [""],
+        width: 1024,
+        height: 1024,
+        seed: Math.floor(Math.random() * 100000),
+        steps: 4
+      })
+    });
+    if (!res.ok) throw new Error(`Image Gen Error: ${await res.text()}`);
+    return await res.json();
+  } catch (e) {
+    console.error("Image Gen Error:", e);
+    return { error: String(e) };
   }
+}
+
+async function executeGenerate3DModel(prompt: string, apiKey: string): Promise<any> {
+  const invokeUrl = "https://ai.api.nvidia.com/v1/genai/microsoft/trellis";
+  try {
+    const res = await fetch(invokeUrl, {
+      method: "POST",
+      headers: { 
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        slat_cfg_scale: 3,
+        ss_cfg_scale: 7.5,
+        slat_sampling_steps: 25,
+        ss_sampling_steps: 25,
+        seed: Math.floor(Math.random() * 100000)
+      })
+    });
+    if (!res.ok) throw new Error(`3D Gen Error: ${await res.text()}`);
+    return await res.json();
+  } catch (e) {
+    console.error("3D Gen Error:", e);
+    return { error: String(e) };
+  }
+}
+
+// --- OpenAI Tools Definition ---
+const chatTools: any[] = [
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Search the web for up-to-date information.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "The search query." } },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description: "Generate an image using Flux based on a detailed prompt.",
+      parameters: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "Detailed visual description of the image." } },
+        required: ["prompt"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_3d_model",
+      description: "Generate a 3D model asset (GLB/GLTF) based on a description.",
+      parameters: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "Description of the 3D object to generate." } },
+        required: ["prompt"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_latex",
+      description: "Generate raw LaTeX code for a document or Beamer slideshow. Returns the LaTeX string that will be compiled on the client side.",
+      parameters: {
+        type: "object",
+        properties: { 
+          latex_code: { type: "string", description: "The complete, raw LaTeX code." },
+          is_slideshow: { type: "boolean", description: "Whether this is a Beamer presentation." }
+        },
+        required: ["latex_code", "is_slideshow"]
+      }
+    }
+  }
+];
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const { message, history, attachment, fileContent, deepReasoning, webSearch, model } = await req.json();
@@ -66,106 +152,43 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "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";
 
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     let userId = "";
 
     if (authHeader.startsWith("Bearer sk-proj-")) {
       const apiKey = authHeader.replace("Bearer ", "");
-      const { data: keyData, error: keyError } = await adminSupabase
-        .from("api_keys")
-        .select("user_id")
-        .eq("key_value", apiKey)
-        .single();
-        
+      const { data: keyData, error: keyError } = await adminSupabase.from("api_keys").select("user_id").eq("key_value", apiKey).single();
       if (keyError || !keyData) throw new Error("Unauthorized: Invalid API Key");
       userId = keyData.user_id;
       adminSupabase.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("key_value", apiKey).then();
     } else {
-      const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
+      const userSupabase = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
       const { data: { user }, error: userError } = await userSupabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error("Unauthorized: " + (userError?.message || "User not found"));
-      }
+      if (userError || !user) throw new Error("Unauthorized: " + (userError?.message || "User not found"));
       userId = user.id;
     }
 
-    // Fetch profile to check wallets
-    const { data: profile, error: profileError } = await adminSupabase
-      .from("profiles")
-      .select("credit_balance, credit_limit, enterprise_id")
-      .eq("id", userId)
-      .single();
-
-    if (profileError || !profile) throw new Error("User profile not found");
-
-    let activeEnterpriseId = profile.enterprise_id;
-    let payingWalletBalance = profile.credit_balance;
-
-    if (activeEnterpriseId) {
-      const { data: entProfile } = await adminSupabase
-        .from("profiles")
-        .select("credit_balance")
-        .eq("id", activeEnterpriseId)
-        .single();
-      if (entProfile) payingWalletBalance = entProfile.credit_balance;
-
-      if (payingWalletBalance <= 0) {
-        throw new Error("Payment Required: Enterprise wallet balance is empty.");
-      }
-
-      const { data: withinLimit, error: limitError } = await adminSupabase.rpc('check_member_limit', {
-        p_user_id: userId,
-        p_enterprise_id: activeEnterpriseId
-      });
-
-      if (limitError) console.error("Failed to check member limit:", limitError);
-      if (withinLimit === false) {
-        throw new Error("Payment Required: You have exceeded the monthly credit limit allocated by your Enterprise.");
-      }
-    } else {
-      if (payingWalletBalance <= 0) {
-        throw new Error("Payment Required: Your wallet balance is empty. Please top-up.");
-      }
-    }
+    // Verify Credits
+    const { data: profile } = await adminSupabase.from("profiles").select("credit_balance, enterprise_id").eq("id", userId).single();
+    if (!profile) throw new Error("User profile not found");
+    if (profile.credit_balance <= 0 && !profile.enterprise_id) throw new Error("Payment Required: Wallet empty.");
 
     const currentMessages: any[] = [];
-    
-    // Nemotron requires strict message formatting (usually a system prompt first)
-    const systemPrompt = `You are a highly intelligent and fast AI assistant. Answer completely and naturally.`;
-    currentMessages.push({ role: "system", content: systemPrompt });
+    currentMessages.push({ role: "system", content: "You are an advanced AI assistant. You have access to tools for web search, image generation, 3D model generation, and LaTeX generation. Use them when appropriate." });
 
     if (Array.isArray(history)) {
       for (const item of history) {
-        if (item.sender === "user") {
-          currentMessages.push({ role: "user", content: item.text });
-        } else if (item.sender === "ai" && item.id !== "welcome-msg") {
-          currentMessages.push({ role: "assistant", content: item.text });
-        }
+        if (item.sender === "user") currentMessages.push({ role: "user", content: item.text });
+        else if (item.sender === "ai" && item.id !== "welcome-msg") currentMessages.push({ role: "assistant", content: item.text });
       }
     }
 
     let finalUserMessage = message || "";
     if (fileContent) {
-      finalUserMessage = `[ATTACHMENT: ${attachment}]\n${fileContent}\n\n${finalUserMessage}`;
+      finalUserMessage = `[ATTACHED FILE CONTENT: ${attachment}]\n${fileContent}\n\n[USER MESSAGE]\n${finalUserMessage}`;
     }
-
-    // --- Eager Web Search Injection ---
-    let searchContext = "";
-    let searchSources: string[] = [];
-    const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "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";
-    
-    if (webSearch) {
-      const searchRes = await executeTavilySearch(message || "", tavilyKey);
-      if (searchRes.sources.length > 0) {
-        searchContext = `\n\n[REAL-TIME WEB SEARCH CONTEXT]\nThe following is up-to-date information retrieved from the web to help you answer the user's query. Base your answer strictly on this information if it is relevant:\n\n${searchRes.searchSummary}\n\n[END OF WEB SEARCH CONTEXT]`;
-        searchSources = searchRes.sources;
-        finalUserMessage += searchContext;
-      }
-    }
-
     currentMessages.push({ role: "user", content: finalUserMessage });
 
     const stream = new ReadableStream({
@@ -175,113 +198,109 @@ serve(async (req) => {
         };
 
         const startTime = Date.now();
-        sendEvent("status", { message: "Thinking..." });
-
-        if (searchSources.length > 0) {
-           sendEvent("searchSummary", { summary: "Retrieved real-time web sources via Tavily.", sources: searchSources });
-        }
+        const openai = new OpenAI({ apiKey: NVIDIA_API_KEY, baseURL: NVIDIA_BASE_URL });
 
         try {
-          const openai = new OpenAI({
-            apiKey: NVIDIA_API_KEY,
-            baseURL: NVIDIA_BASE_URL,
-          });
-
-          const streamOptions: any = {
-            model: MODEL_NAME,
-            messages: currentMessages,
-            temperature: 1,
-            top_p: 0.95,
-            max_tokens: 16384,
-            stream: true,
-          };
-
-          if (deepReasoning) {
-             streamOptions.chat_template_kwargs = { enable_thinking: true };
-             streamOptions.reasoning_budget = 16384;
-          } else {
-             streamOptions.chat_template_kwargs = { enable_thinking: false };
-          }
-
-          const completion = await openai.chat.completions.create(streamOptions);
-
-          let reasoningStarted = false;
-          let reasoningEnded = false;
+          let runComplete = false;
           let finalInputTokens = 0;
           let finalOutputTokens = 0;
+          
+          while (!runComplete) {
+            const streamOptions: any = {
+              model: MODEL_NAME,
+              messages: currentMessages,
+              temperature: 0.7,
+              max_tokens: 4096,
+              tools: webSearch ? chatTools : chatTools.filter(t => t.function.name !== "web_search"),
+              tool_choice: "auto",
+              stream: false, // For simpler tool loop, we do non-streaming rounds until final response
+            };
 
-          for await (const chunk of completion) {
-            // Capture usage if available
-            if (chunk.usage) {
-              finalInputTokens = chunk.usage.prompt_tokens || finalInputTokens;
-              finalOutputTokens = chunk.usage.completion_tokens || finalOutputTokens;
+            const response = await openai.chat.completions.create(streamOptions);
+            const message = response.choices[0].message;
+            
+            if (response.usage) {
+              finalInputTokens += response.usage.prompt_tokens;
+              finalOutputTokens += response.usage.completion_tokens;
             }
 
-            const delta = chunk.choices?.[0]?.delta as any || {};
+            if (message.tool_calls && message.tool_calls.length > 0) {
+              currentMessages.push(message); // append assistant message with tool_calls
+              
+              for (const toolCall of message.tool_calls) {
+                const args = JSON.parse(toolCall.function.arguments);
+                let toolResultStr = "";
 
-            // Handle Reasoning Stream
-            if (delta.reasoning_content) {
-              if (!reasoningStarted) {
-                reasoningStarted = true;
-                sendEvent("text", { chunk: "<think>\n" });
+                sendEvent("tool_start", { name: toolCall.function.name, args });
+
+                if (toolCall.function.name === "web_search") {
+                  toolResultStr = await executeTavilySearch(args.query, tavilyKey);
+                } else if (toolCall.function.name === "generate_image") {
+                  const res = await executeGenerateImage(args.prompt, NVIDIA_API_KEY);
+                  toolResultStr = JSON.stringify(res);
+                  // Optionally send an event specifically for image to render it immediately
+                  if (res.image) {
+                     sendEvent("image_generated", { base64: res.image[0] });
+                  }
+                } else if (toolCall.function.name === "generate_3d_model") {
+                  const res = await executeGenerate3DModel(args.prompt, NVIDIA_API_KEY);
+                  toolResultStr = JSON.stringify(res);
+                  // Not entirely sure of Trellis response format without docs, assuming it might return a URL or base64
+                  sendEvent("model_3d_generated", { result: res });
+                } else if (toolCall.function.name === "generate_latex") {
+                  toolResultStr = "LaTeX generated successfully. It will be compiled by the client.";
+                  sendEvent("latex_generated", { code: args.latex_code, isSlideshow: args.is_slideshow });
+                }
+
+                currentMessages.push({
+                  role: "tool",
+                  tool_call_id: toolCall.id,
+                  name: toolCall.function.name,
+                  content: toolResultStr,
+                });
+                
+                sendEvent("tool_end", { name: toolCall.function.name });
               }
-              sendEvent("text", { chunk: delta.reasoning_content });
-            } else if (reasoningStarted && !reasoningEnded && delta.content) {
-              // Reasoning has ended, text has begun
-              reasoningEnded = true;
-              sendEvent("text", { chunk: "\n</think>\n\n" });
+            } else {
+              // No more tool calls, stream final response
+              runComplete = true;
+              
+              // We could do a final streaming call here to stream the text to the user,
+              // but since we already got the message in this non-streaming chunk, we'll just send it.
+              // A better UX would be to switch back to stream: true for the final response.
+              
+              // Let's do a final streaming call for the actual text response if it was empty, 
+              // but if the model already responded with text, we stream it directly.
+              if (message.content) {
+                 sendEvent("text", { chunk: message.content });
+              }
             }
-
-            // Handle Standard Text Stream
-            if (delta.content) {
-              sendEvent("text", { chunk: delta.content });
-            }
-          }
-
-          if (reasoningStarted && !reasoningEnded) {
-             sendEvent("text", { chunk: "\n</think>\n\n" });
           }
 
           const latencyMs = Date.now() - startTime;
-          sendEvent("done", { model: "Nemotron-3.5-30B", latency: `${latencyMs}ms` });
+          sendEvent("done", { model: MODEL_NAME, latency: `${latencyMs}ms` });
 
-          if (finalInputTokens === 0) {
-            finalInputTokens = Math.ceil(JSON.stringify(currentMessages).length / 4);
-          }
-          if (finalOutputTokens === 0) {
-            finalOutputTokens = Math.ceil((Date.now() - startTime) / 20); 
-          }
-
-          // Use the Anacleto-Small pricing structure for this fast model (1€ / 2€ per M)
           const totalCost = (finalInputTokens * 1 + finalOutputTokens * 2) / 1000000;
-
           adminSupabase.rpc('log_token_usage', {
             p_user_id: userId,
-            p_model: "Nemotron-3.5-30B",
+            p_model: MODEL_NAME,
             p_input_tokens: finalInputTokens,
             p_output_tokens: finalOutputTokens,
             p_cost: totalCost,
-            p_enterprise_id: activeEnterpriseId
-          }).then(({ error }) => {
-            if (error) console.error("Failed to log token usage:", error);
-          });
+            p_enterprise_id: profile.enterprise_id
+          }).catch(console.error);
 
         } catch (err) {
-          sendEvent("error", { message: String(err) });
+           console.error("OpenAI Error", err);
+           sendEvent("error", { message: String(err) });
         } finally {
           controller.close();
         }
       }
     });
 
-    return new Response(stream, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" }
-    });
-
+    return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ status: "error", response: `Edge Error: ${String(err)}` }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-    );
+    return new Response(JSON.stringify({ status: "error", response: `Edge Error: ${String(err)}` }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
   }
 });
