@@ -11,6 +11,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// --- Eager Web Search Function ---
+async function executeTavilySearch(query: string, apiKey: string): Promise<{ searchSummary: string; sources: string[] }> {
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query: query,
+        search_depth: "basic",
+        max_results: 3
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Tavily API Error: ${err}`);
+    }
+
+    const data = await res.json();
+    const sources: string[] = [];
+    const search_results: string[] = [];
+    
+    if (data.results && data.results.length > 0) {
+      for (const result of data.results) {
+        search_results.push(`Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`);
+        sources.push(result.url);
+      }
+    }
+    
+    return {
+      searchSummary: search_results.join("\n\n"),
+      sources
+    };
+  } catch (e) {
+    console.error("Web Search Error:", e);
+    return { searchSummary: "", sources: [] };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -111,6 +151,21 @@ serve(async (req) => {
     if (fileContent) {
       finalUserMessage = `[ATTACHMENT: ${attachment}]\n${fileContent}\n\n${finalUserMessage}`;
     }
+
+    // --- Eager Web Search Injection ---
+    let searchContext = "";
+    let searchSources: string[] = [];
+    const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "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";
+    
+    if (webSearch) {
+      const searchRes = await executeTavilySearch(message || "", tavilyKey);
+      if (searchRes.sources.length > 0) {
+        searchContext = `\n\n[REAL-TIME WEB SEARCH CONTEXT]\nThe following is up-to-date information retrieved from the web to help you answer the user's query. Base your answer strictly on this information if it is relevant:\n\n${searchRes.searchSummary}\n\n[END OF WEB SEARCH CONTEXT]`;
+        searchSources = searchRes.sources;
+        finalUserMessage += searchContext;
+      }
+    }
+
     currentMessages.push({ role: "user", content: finalUserMessage });
 
     const stream = new ReadableStream({
@@ -121,6 +176,10 @@ serve(async (req) => {
 
         const startTime = Date.now();
         sendEvent("status", { message: "Thinking..." });
+
+        if (searchSources.length > 0) {
+           sendEvent("searchSummary", { summary: "Retrieved real-time web sources via Tavily.", sources: searchSources });
+        }
 
         try {
           const openai = new OpenAI({
