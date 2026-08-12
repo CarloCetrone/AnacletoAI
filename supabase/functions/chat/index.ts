@@ -296,18 +296,16 @@ CRITICAL INSTRUCTIONS:
                   sendEvent("searchSummary", { summary: `Web search executed for "${args.query}"`, sources: [] });
                 } else if (toolCall.function.name === "generate_image") {
                   const res = await executeGenerateImage(args.prompt, NVIDIA_API_KEY);
-                  toolResultStr = JSON.stringify(res);
-                  
                   const b64 = res.artifacts?.[0]?.base64 || res.image || (res.data && res.data[0] && res.data[0].b64_json);
                   if (b64) {
                      sendEvent("image_generated", { base64: b64 });
                   }
+                  toolResultStr = "Image successfully generated and displayed to the user.";
                 } else if (toolCall.function.name === "generate_3d_model") {
                   const res = await executeGenerate3DModel(args.prompt, NVIDIA_API_KEY);
-                  toolResultStr = JSON.stringify(res);
-                  
                   const b64 = res.artifacts?.[0]?.base64;
                   sendEvent("model_3d_generated", { result: b64 || res });
+                  toolResultStr = "3D model successfully generated and displayed to the user.";
                 } else if (toolCall.function.name === "generate_latex") {
                   toolResultStr = "LaTeX generated successfully. It will be compiled by the client.";
                   sendEvent("latex_generated", { code: args.latex_code, isSlideshow: args.is_slideshow });
@@ -331,14 +329,20 @@ CRITICAL INSTRUCTIONS:
           sendEvent("done", { model: MODEL_NAME, latency: `${latencyMs}ms` });
 
           const totalCost = (finalInputTokens * 1 + finalOutputTokens * 2) / 1000000;
-          adminSupabase.rpc('log_token_usage', {
-            p_user_id: userId,
-            p_model: MODEL_NAME,
-            p_input_tokens: finalInputTokens,
-            p_output_tokens: finalOutputTokens,
-            p_cost: totalCost,
-            p_enterprise_id: profile.enterprise_id
-          }).catch(console.error);
+          try {
+             await adminSupabase.rpc('log_token_usage', {
+               p_user_id: userId,
+               p_model: MODEL_NAME,
+               p_input_tokens: finalInputTokens,
+               p_output_tokens: finalOutputTokens,
+               p_cost: totalCost,
+               p_enterprise_id: profile.enterprise_id
+             });
+          } catch(e) {
+             console.error("Token log err:", e);
+          }
+
+          controller.close();
 
         } catch (err) {
            console.error("OpenAI Error", err);

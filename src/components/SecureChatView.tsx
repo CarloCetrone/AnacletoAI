@@ -73,30 +73,50 @@ export const SecureChatView: React.FC = () => {
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
 
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    if (typeof window !== 'undefined') {
-       const saved = localStorage.getItem('anacleto_sessions');
-       if (saved) return JSON.parse(saved);
-    }
-    return [
-      {
-        id: 'session-1',
-        title: 'New Conversation',
-        createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        messages: [{
-          id: 'welcome-msg',
-          sender: 'ai',
-          text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelUsed: 'Anacleto-Large'
-        }]
-      }
-    ];
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
 
   useEffect(() => {
-    localStorage.setItem('anacleto_sessions', JSON.stringify(sessions));
-  }, [sessions]);
+    if (isConfigured && session?.user) {
+      const loadSessions = async () => {
+        const { data: dbSessions } = await supabase.from('chat_sessions').select('*').order('created_at', { ascending: false });
+        if (dbSessions && dbSessions.length > 0) {
+          const formatted: ChatSession[] = [];
+          for (const s of dbSessions) {
+            const { data: msgs } = await supabase.from('chat_messages').select('*').eq('session_id', s.id).order('created_at', { ascending: true });
+            formatted.push({
+              id: s.id,
+              title: s.title || 'Conversation',
+              createdAt: new Date(s.created_at).toLocaleTimeString(),
+              messages: (msgs || []).map((m: any) => ({
+                id: m.id,
+                sender: m.sender,
+                text: m.text || '',
+                timestamp: new Date(m.created_at).toLocaleTimeString(),
+              }))
+            });
+            loadedSessionIds.current.add(s.id);
+          }
+          setSessions(formatted);
+          setActiveSessionId(formatted[0].id);
+        } else {
+          setSessions([{
+            id: 'session-1',
+            title: 'New Conversation',
+            createdAt: new Date().toLocaleTimeString(),
+            messages: [{ id: 'welcome-msg', sender: 'ai', text: 'Welcome to Anacleto AI.', timestamp: new Date().toLocaleTimeString(), modelUsed: 'Anacleto-Large' }]
+          }]);
+        }
+      };
+      loadSessions();
+    } else {
+      setSessions([{
+        id: 'session-1',
+        title: 'New Conversation',
+        createdAt: new Date().toLocaleTimeString(),
+        messages: [{ id: 'welcome-msg', sender: 'ai', text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.', timestamp: new Date().toLocaleTimeString(), modelUsed: 'Anacleto-Large' }]
+      }]);
+    }
+  }, [isConfigured, session]);
 
   const [activeSessionId, setActiveSessionId] = useState<string>('session-1');
   const [inputMessage, setInputMessage] = useState('');
@@ -240,33 +260,7 @@ export const SecureChatView: React.FC = () => {
     setExtractedFileText('');
     setLoading(true);
 
-    targetBufferRef.current[aiMsgId] = '';
-    displayedTextRef.current[aiMsgId] = '';
     isStreamingRef.current = true;
-    lastStepTimeRef.current = performance.now();
-
-    const runAsymptoticStreamLoop = () => {
-      const target = targetBufferRef.current[aiMsgId] || '';
-      const current = displayedTextRef.current[aiMsgId] || '';
-      if (current.length < target.length) {
-        const remaining = target.length - current.length;
-        const step = Math.max(1, Math.floor(remaining / 10));
-        const requiredDelay = Math.max(8, 35 - remaining);
-        const now = performance.now();
-        if (now - lastStepTimeRef.current >= requiredDelay) {
-          lastStepTimeRef.current = now;
-          const nextText = target.slice(0, current.length + step);
-          displayedTextRef.current[aiMsgId] = nextText;
-          setSessions((prev) => prev.map((sess) => sess.id === currentSessionId ? {
-            ...sess, messages: sess.messages.map((m) => m.id === aiMsgId ? { ...m, text: nextText } : m)
-          } : sess));
-        }
-      }
-      if (isStreamingRef.current || (displayedTextRef.current[aiMsgId]?.length || 0) < (targetBufferRef.current[aiMsgId]?.length || 0)) {
-        animationFrameIdRef.current = requestAnimationFrame(runAsymptoticStreamLoop);
-      }
-    };
-    animationFrameIdRef.current = requestAnimationFrame(runAsymptoticStreamLoop);
 
     abortControllerRef.current = new AbortController();
     try {
@@ -305,7 +299,9 @@ export const SecureChatView: React.FC = () => {
               try {
                 const eventData = JSON.parse(dataStr);
                 if (eventType === 'text' && eventData.chunk) {
-                  targetBufferRef.current[aiMsgId] = (targetBufferRef.current[aiMsgId] || '') + eventData.chunk;
+                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
+                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, text: (m.text || '') + eventData.chunk } : m)
+                   } : s));
                 } else if (eventType === 'reasoning' && eventData.chunk) {
                    setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                      ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, thoughts: (m.thoughts || '') + eventData.chunk } : m)
@@ -343,8 +339,6 @@ export const SecureChatView: React.FC = () => {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, searchSummary: eventData.summary, sources: eventData.sources } : m)
                   } : s));
                 } else if (eventType === 'done') {
-                   // Ensure loading is set to false even if no text was streamed (e.g. image generated)
-                   runAsymptoticStreamLoop(); // flush text
                    isStreamingRef.current = false;
                    setLoading(false);
                 } else if (eventType === 'error') {
