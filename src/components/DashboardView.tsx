@@ -93,11 +93,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             if (data?.enterprise_name) setMyEnterpriseName(data.enterprise_name);
           }
 
-          const { data, error } = await supabase
+          let query = supabase
             .from('token_usage')
             .select('model_name, input_tokens, output_tokens')
-            .eq('user_id', user.id)
-            .is('enterprise_id', null);
+            .eq('user_id', user.id);
+
+          if (profile.enterpriseId) {
+            // Show usage generated for this enterprise
+            query = query.eq('enterprise_id', profile.enterpriseId);
+          } else {
+            // Show personal out-of-pocket usage
+            query = query.is('enterprise_id', null);
+          }
+
+          const { data, error } = await query;
 
           if (!error && data) {
             const stats: Record<string, { input: number, output: number, credits: number }> = {};
@@ -127,16 +136,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           
           if (members) setEnterpriseMembers(members);
 
-          // Fetch usage where enterprise_id matches, so we don't lose data when members are removed
-          const { data: usageData } = await supabase
+          // Fetch usage where enterprise_id matches, without bad joins
+          const { data: usageData, error: usageError } = await supabase
             .from('token_usage')
-            .select('user_id, model_name, input_tokens, output_tokens, profiles!user_id(username)')
+            .select('user_id, model_name, input_tokens, output_tokens')
             .eq('enterprise_id', user.id);
+            
+          if (usageError) console.error("Error fetching usage:", usageError);
             
           if (usageData) {
             const usageMap: Record<string, { input: number, output: number, credits: number, username: string }> = {};
             usageData.forEach(row => {
-              if (!usageMap[row.user_id]) usageMap[row.user_id] = { input: 0, output: 0, credits: 0, username: (row.profiles as any)?.username || 'Removed User' };
+              if (!usageMap[row.user_id]) {
+                const foundMember = members?.find(m => m.id === row.user_id);
+                usageMap[row.user_id] = { input: 0, output: 0, credits: 0, username: foundMember ? foundMember.username : 'Removed User' };
+              }
               usageMap[row.user_id].input += row.input_tokens;
               usageMap[row.user_id].output += row.output_tokens;
               usageMap[row.user_id].credits += calculateCredits(row.model_name, row.input_tokens, row.output_tokens);
@@ -434,20 +448,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   const renderResearcherDashboard = () => (
     <>
-      {renderInvitationsList()}
-      {renderEnterpriseLink()}
-      
-      {!profile?.enterpriseId && (
-        <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between mb-8">
-          <div>
-            <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Available Wallet Balance</p>
-            <p className="text-3xl font-mono text-emerald-400">€{walletBalance.toFixed(2)}</p>
-            <button onClick={handleTopUp} className="text-[10px] mt-2 font-bold uppercase text-[#FFD54F] hover:underline">Top Up Wallet</button>
+      <div className="mb-10">
+        <h2 className="text-xl font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2">
+          Usage & Limits
+        </h2>
+        {renderInvitationsList()}
+        {renderEnterpriseLink()}
+        
+        {!profile?.enterpriseId && (
+          <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between mb-8">
+            <div>
+              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Available Wallet Balance</p>
+              <p className="text-3xl font-mono text-emerald-400">€{walletBalance.toFixed(2)}</p>
+              <button onClick={handleTopUp} className="text-[10px] mt-2 font-bold uppercase text-[#FFD54F] hover:underline">Top Up Wallet</button>
+            </div>
+            <Wallet className="w-8 h-8 text-emerald-400/20" />
           </div>
-          <Wallet className="w-8 h-8 text-emerald-400/20" />
-        </div>
-      )}
+        )}
 
+        <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 max-w-2xl shadow-lg text-left">
+          {renderUsageMetrics()}
+        </div>
+      </div>
+
+      <h2 className="text-xl font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2">
+        Developer Tools
+      </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
         <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
@@ -496,29 +522,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </button>
         </div>
       </div>
-      
-      <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2 mt-8">
-        API Usage Overview
-      </h2>
-      <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 max-w-2xl shadow-lg text-left">
-        {renderUsageMetrics()}
-      </div>
     </>
   );
 
   const renderUsageMetrics = () => {
-    const limit = profile?.creditLimit || 10;
-    const pct = Math.min((totalCredits / limit) * 100, 100);
+    const isEnterpriseSponsored = !!profile?.enterpriseId;
+    const limit = profile?.creditLimit || 0;
+    const pct = isEnterpriseSponsored ? Math.min((totalCredits / limit) * 100, 100) : 0;
 
     return (
       <>
-        <div className="flex justify-between items-end mb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Credits Used vs Allocated Limit</span>
-          <span className="text-lg font-mono text-[#F5F5F5]">€{totalCredits.toFixed(4)} <span className="text-sm text-[#666666]">/ €{limit.toFixed(2)}</span></span>
-        </div>
-        <div className="w-full h-2 bg-[#252525] rounded-full overflow-hidden mb-4">
-          <div className="h-full bg-emerald-400 transition-all duration-1000" style={{ width: `${pct}%` }}></div>
-        </div>
+        {isEnterpriseSponsored ? (
+          <>
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Enterprise Allocation Used</span>
+              <span className="text-lg font-mono text-[#F5F5F5]">€{totalCredits.toFixed(4)} <span className="text-sm text-[#666666]">/ €{limit.toFixed(2)}</span></span>
+            </div>
+            <div className="w-full h-2 bg-[#252525] rounded-full overflow-hidden mb-4">
+              <div className="h-full bg-emerald-400 transition-all duration-1000" style={{ width: `${pct}%` }}></div>
+            </div>
+            <p className="text-xs text-emerald-400 mt-2 mb-4 font-semibold">€{(limit - totalCredits).toFixed(4)} allocated credits remaining</p>
+          </>
+        ) : (
+          <div className="flex justify-between items-end mb-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Total Historical Usage</span>
+            <span className="text-lg font-mono text-[#F5F5F5]">€{totalCredits.toFixed(4)}</span>
+          </div>
+        )}
         
         <div className="space-y-4 mb-4 border-t border-[#252525] pt-4">
           <p className="text-[10px] font-bold text-[#BDBDBD] uppercase tracking-wider mb-2">Usage by Model</p>
@@ -545,8 +575,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <p className="text-xs text-[#666666] italic">No tokens used yet.</p>
           )}
         </div>
-
-        <p className="text-xs text-emerald-400 mt-2 font-semibold">€{(limit - totalCredits).toFixed(4)} allocated credits remaining</p>
       </>
     );
   };
@@ -570,10 +598,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-8 text-center shadow-lg mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none"></div>
         <h2 className="text-2xl font-bold text-[#F5F5F5] mb-2">
-          {profile?.enterpriseId ? 'Enterprise Plan' : 'Free Trial Tier'}
+          {profile?.enterpriseId ? 'Enterprise Plan' : 'Standard Tier'}
         </h2>
         <p className="text-[#BDBDBD] text-sm mb-8 max-w-lg mx-auto">
-          {profile?.enterpriseId ? 'Your API requests and chat sessions are sponsored by your organization.' : 'You are currently on the free trial. You have an initial Wallet Balance to explore Anacleto AI.'}
+          {profile?.enterpriseId ? 'Your API requests and chat sessions are sponsored by your organization.' : 'You are currently on the standard tier. Top up your wallet to continue using Anacleto AI.'}
         </p>
 
         <div className="bg-[#121212] border border-[#333333] rounded-xl p-6 max-w-md mx-auto mb-8 text-left shadow-lg">
