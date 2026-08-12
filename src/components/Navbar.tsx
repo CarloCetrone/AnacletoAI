@@ -110,10 +110,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                   title={user.email || 'User Account'}
                 >
                   <div className="w-6 h-6 rounded-full bg-[#FFD54F] text-black font-bold text-xs flex items-center justify-center">
-                    {(user.email?.[0] || 'U').toUpperCase()}
+                    {((profile?.username || profile?.enterpriseName || user.email)?.[0] || 'U').toUpperCase()}
                   </div>
                   <span className="text-xs text-[#F5F5F5] font-medium hidden sm:inline max-w-[120px] truncate">
-                    {profile?.email || user.email}
+                    {profile?.username || profile?.enterpriseName || profile?.email || user.email}
                   </span>
                 </div>
                 <button

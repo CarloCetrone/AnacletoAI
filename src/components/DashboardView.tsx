@@ -24,21 +24,31 @@ interface DashboardViewProps {
   onNavigate: (view: string, id?: string) => void;
 }
 
+const calculateCredits = (model: string, inputTokens: number, outputTokens: number) => {
+  const isLarge = model.toLowerCase().includes('large');
+  const inputCost = isLarge ? 5 : 1;
+  const outputCost = isLarge ? 10 : 2;
+  return (inputTokens * inputCost + outputTokens * outputCost) / 1000000;
+};
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const { profile, user, isConfigured } = useAuth();
-  const [modelTokens, setModelTokens] = useState<Record<string, number>>({});
-  const [totalTokens, setTotalTokens] = useState(0);
+  
+  // Standard/Developer State
+  const [modelStats, setModelStats] = useState<Record<string, { input: number, output: number, credits: number }>>({});
+  const [totalCredits, setTotalCredits] = useState(0);
+  const [myEnterpriseName, setMyEnterpriseName] = useState<string | null>(null);
 
   // Invitation State
   const [invitations, setInvitations] = useState<any[]>([]);
   const [inviteUsername, setInviteUsername] = useState('');
-  const [inviteTokenLimit, setInviteTokenLimit] = useState<number>(10000);
+  const [inviteCreditLimit, setInviteCreditLimit] = useState<number>(10);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMsg, setInviteMsg] = useState('');
 
   // Enterprise Member State
   const [enterpriseMembers, setEnterpriseMembers] = useState<any[]>([]);
-  const [membersUsage, setMembersUsage] = useState<Record<string, number>>({});
+  const [membersUsage, setMembersUsage] = useState<Record<string, { input: number, output: number, credits: number }>>({});
 
   const fetchInvitations = async () => {
     if (!isConfigured || !profile || !user) return;
@@ -53,30 +63,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     if (isConfigured && user && profile) {
-      // Fetch Invitations
       fetchInvitations();
 
-      // Fetch Tokens for standard/developer
       if (profile.accountType !== 'enterprise') {
-        const fetchTokens = async () => {
+        const fetchStandardData = async () => {
+          // Fetch Enterprise Name if sponsored
+          if (profile.enterpriseId) {
+            const { data } = await supabase.from('profiles').select('enterprise_name').eq('id', profile.enterpriseId).single();
+            if (data?.enterprise_name) setMyEnterpriseName(data.enterprise_name);
+          }
+
+          // Fetch Token Usage
           const { data, error } = await supabase
             .from('token_usage')
             .select('model_name, input_tokens, output_tokens')
             .eq('user_id', user.id);
 
           if (!error && data) {
-            const counts: Record<string, number> = {};
-            let total = 0;
+            const stats: Record<string, { input: number, output: number, credits: number }> = {};
+            let tCredits = 0;
             data.forEach(row => {
-              const sum = row.input_tokens + row.output_tokens;
-              counts[row.model_name] = (counts[row.model_name] || 0) + sum;
-              total += sum;
+              const m = row.model_name;
+              if (!stats[m]) stats[m] = { input: 0, output: 0, credits: 0 };
+              stats[m].input += row.input_tokens;
+              stats[m].output += row.output_tokens;
+              
+              const credits = calculateCredits(m, row.input_tokens, row.output_tokens);
+              stats[m].credits += credits;
+              tCredits += credits;
             });
-            setModelTokens(counts);
-            setTotalTokens(total);
+            setModelStats(stats);
+            setTotalCredits(tCredits);
           }
         };
-        fetchTokens();
+        fetchStandardData();
       } else {
         // Fetch Enterprise Data (Members & Analytics)
         const fetchEnterpriseData = async () => {
@@ -91,13 +111,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             if (userIds.length > 0) {
               const { data: usageData } = await supabase
                 .from('token_usage')
-                .select('user_id, input_tokens, output_tokens')
+                .select('user_id, model_name, input_tokens, output_tokens')
                 .in('user_id', userIds);
                 
               if (usageData) {
-                const usageMap: Record<string, number> = {};
+                const usageMap: Record<string, { input: number, output: number, credits: number }> = {};
                 usageData.forEach(row => {
-                  usageMap[row.user_id] = (usageMap[row.user_id] || 0) + row.input_tokens + row.output_tokens;
+                  if (!usageMap[row.user_id]) usageMap[row.user_id] = { input: 0, output: 0, credits: 0 };
+                  usageMap[row.user_id].input += row.input_tokens;
+                  usageMap[row.user_id].output += row.output_tokens;
+                  usageMap[row.user_id].credits += calculateCredits(row.model_name, row.input_tokens, row.output_tokens);
                 });
                 setMembersUsage(usageMap);
               }
@@ -117,7 +140,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     const { error } = await supabase.from('enterprise_invitations').insert({
       enterprise_id: user?.id,
       username: inviteUsername,
-      token_limit: inviteTokenLimit
+      credit_limit: inviteCreditLimit
     });
     setInviteLoading(false);
     if (error) {
@@ -142,15 +165,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   };
 
   const handleUpdateLimit = async (memberId: string, currentLimit: number) => {
-    const newLimit = prompt('Enter new monthly token limit:', currentLimit.toString());
+    const newLimit = prompt('Enter new monthly credit limit (€):', currentLimit.toString());
     if (newLimit && !isNaN(Number(newLimit))) {
-      await supabase.from('profiles').update({ token_limit: Number(newLimit) }).eq('id', memberId);
+      await supabase.from('profiles').update({ credit_limit: Number(newLimit) }).eq('id', memberId);
       window.location.reload();
     }
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    if (confirm('Are you sure you want to remove this member? Their token limit will be reset to default.')) {
+    if (confirm('Are you sure you want to remove this member? Their credit limit will be reset to default (€10).')) {
       const { error } = await supabase.rpc('remove_enterprise_member', { member_id: memberId });
       if (!error) {
         window.location.reload();
@@ -161,18 +184,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   };
 
   const renderEnterpriseDashboard = () => {
-    const totalEnterpriseTokens = Object.values(membersUsage).reduce((a, b) => a + b, 0);
+    const totalEnterpriseCredits = Object.values(membersUsage).reduce((a, b) => a + b.credits, 0);
     
-    // Prepare data for recharts
     const chartData = enterpriseMembers.map(m => ({
       name: m.username,
-      Tokens: membersUsage[m.id] || 0,
-      Limit: m.token_limit
+      Credits: Number((membersUsage[m.id]?.credits || 0).toFixed(4)),
+      Limit: m.credit_limit
     }));
 
     return (
       <>
-        {/* KPI Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between">
             <div>
@@ -183,8 +204,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg flex items-center justify-between">
             <div>
-              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Tokens Used (MTD)</p>
-              <p className="text-3xl font-mono text-[#FFD54F]">{totalEnterpriseTokens.toLocaleString()}</p>
+              <p className="text-[#666666] text-xs font-bold uppercase tracking-wider mb-1">Credits Used (MTD)</p>
+              <p className="text-3xl font-mono text-[#FFD54F]">€{totalEnterpriseCredits.toFixed(4)}</p>
             </div>
             <BarChart3 className="w-8 h-8 text-[#FFD54F]/20" />
           </div>
@@ -197,22 +218,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Analytics Graph */}
         <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2">
-          Usage Analytics by Member
+          Credit Usage by Member
         </h2>
         {enterpriseMembers.length > 0 ? (
           <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 shadow-lg mb-10 h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <XAxis dataKey="name" stroke="#666666" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#666666" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#666666" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `€${val}`} />
                 <Tooltip 
                   cursor={{ fill: '#252525' }}
                   contentStyle={{ backgroundColor: '#121212', border: '1px solid #333333', borderRadius: '8px', color: '#F5F5F5' }}
                   itemStyle={{ color: '#FFD54F', fontWeight: 'bold' }}
+                  formatter={(value: number) => [`€${value.toFixed(4)}`, 'Credits Used']}
                 />
-                <Bar dataKey="Tokens" fill="#FFD54F" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Credits" fill="#FFD54F" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -222,7 +243,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* Member Management */}
         <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2 mt-8">
           Member Management
         </h2>
@@ -231,22 +251,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#333333]">
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666]">Username</th>
-                <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666]">Usage vs Limit</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666]">Input Tokens</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666]">Output Tokens</th>
+                <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666]">Credits vs Limit</th>
                 <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#666666] text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {enterpriseMembers.map(member => {
-                const used = membersUsage[member.id] || 0;
-                const limit = member.token_limit;
-                const pct = Math.min((used / limit) * 100, 100);
+                const usage = membersUsage[member.id] || { input: 0, output: 0, credits: 0 };
+                const limit = member.credit_limit || 10;
+                const pct = Math.min((usage.credits / limit) * 100, 100);
                 return (
                   <tr key={member.id} className="border-b border-[#333333]/50 hover:bg-[#1A1A1A]/50 transition-colors">
                     <td className="p-4 text-sm font-semibold text-[#F5F5F5]">{member.username}</td>
+                    <td className="p-4 text-xs text-[#BDBDBD] font-mono">{usage.input.toLocaleString()}</td>
+                    <td className="p-4 text-xs text-[#BDBDBD] font-mono">{usage.output.toLocaleString()}</td>
                     <td className="p-4">
                       <div className="flex justify-between text-[10px] mb-1.5 uppercase font-bold tracking-wide">
-                        <span className="text-[#BDBDBD]">{used.toLocaleString()} USED</span>
-                        <span className="text-[#666666]">{limit.toLocaleString()} LIMIT</span>
+                        <span className="text-[#BDBDBD]">€{usage.credits.toFixed(4)} USED</span>
+                        <span className="text-[#666666]">€{limit.toFixed(2)} LIMIT</span>
                       </div>
                       <div className="w-full h-1.5 bg-[#252525] rounded-full overflow-hidden">
                         <div className={`h-full ${pct > 90 ? 'bg-red-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }}></div>
@@ -261,14 +285,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               })}
               {enterpriseMembers.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="p-8 text-center text-[#666666] italic text-sm">No active members in this enterprise.</td>
+                  <td colSpan={5} className="p-8 text-center text-[#666666] italic text-sm">No active members in this enterprise.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Invitations Management */}
         <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2 mt-8">
           Pending & Sent Invitations
         </h2>
@@ -281,8 +304,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <input type="text" required value={inviteUsername} onChange={(e) => setInviteUsername(e.target.value)} className="w-full bg-[#1A1A1A] border border-[#333333] rounded-lg px-3 py-2 text-sm text-[#F5F5F5] focus:border-[#FFD54F] outline-none transition-colors" placeholder="e.g. alice_dev" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-[#666666] mb-1">Monthly Token Limit</label>
-                <input type="number" required value={inviteTokenLimit} onChange={(e) => setInviteTokenLimit(Number(e.target.value))} className="w-full bg-[#1A1A1A] border border-[#333333] rounded-lg px-3 py-2 text-sm text-[#F5F5F5] focus:border-[#FFD54F] outline-none transition-colors" min="1000" step="1000" />
+                <label className="block text-[10px] uppercase font-bold text-[#666666] mb-1">Monthly Credit Limit (€)</label>
+                <input type="number" required value={inviteCreditLimit} onChange={(e) => setInviteCreditLimit(Number(e.target.value))} className="w-full bg-[#1A1A1A] border border-[#333333] rounded-lg px-3 py-2 text-sm text-[#F5F5F5] focus:border-[#FFD54F] outline-none transition-colors" min="1" step="1" />
               </div>
               <button type="submit" disabled={inviteLoading} className="w-full bg-[#FFD54F] text-black font-bold text-xs uppercase tracking-wider py-2 rounded-lg hover:bg-[#FFCA28] transition-colors disabled:opacity-50">
                 {inviteLoading ? 'Sending...' : 'Send Invitation'}
@@ -300,7 +323,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   <div key={inv.id} className="p-3 bg-[#1A1A1A] border border-[#333333] rounded-lg flex justify-between items-center">
                     <div>
                       <p className="text-xs font-bold text-[#F5F5F5]">{inv.username}</p>
-                      <p className="text-[10px] text-[#666666]">Limit: {inv.token_limit.toLocaleString()} tokens</p>
+                      <p className="text-[10px] text-[#666666]">Limit: €{inv.credit_limit?.toFixed(2)}</p>
                     </div>
                     <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${inv.status === 'accepted' ? 'bg-emerald-400/10 text-emerald-400' : inv.status === 'rejected' ? 'bg-red-400/10 text-red-400' : 'bg-yellow-400/10 text-yellow-400'}`}>
                       {inv.status}
@@ -325,8 +348,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           {pending.map(inv => (
             <div key={inv.id} className="p-4 bg-[#121212] border border-[#333333] rounded-lg flex justify-between items-center">
               <div>
-                <p className="text-sm font-bold text-[#F5F5F5]">Enterprise is inviting you to join</p>
-                <p className="text-xs text-[#BDBDBD] mt-1">They will provide you with a token limit of <strong className="text-[#FFD54F]">{inv.token_limit.toLocaleString()}</strong> tokens/month.</p>
+                <p className="text-sm font-bold text-[#F5F5F5]">An Enterprise is inviting you to join</p>
+                <p className="text-xs text-[#BDBDBD] mt-1">They will sponsor you with a limit of <strong className="text-[#FFD54F]">€{inv.credit_limit?.toFixed(2)}</strong> per month.</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => handleAcceptInvite(inv.id)} className="p-2 bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20 rounded-lg transition-colors" title="Accept"><CheckCircle className="w-5 h-5" /></button>
@@ -345,8 +368,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl p-6 shadow-lg mb-8 flex items-center gap-4">
         <div className="p-3 bg-emerald-900/40 rounded-lg"><Shield className="w-6 h-6 text-emerald-400" /></div>
         <div>
-          <h3 className="text-emerald-400 font-bold text-sm">Linked to Enterprise</h3>
-          <p className="text-xs text-emerald-200/70 mt-1">Your token usage is currently being sponsored by your enterprise. Monthly Limit: <strong className="text-white">{profile.tokenLimit?.toLocaleString()} tokens</strong>.</p>
+          <h3 className="text-emerald-400 font-bold text-sm">Sponsored by Enterprise</h3>
+          <p className="text-xs text-emerald-200/70 mt-1">
+            {myEnterpriseName ? `You are a member of ${myEnterpriseName}. ` : 'Your token usage is currently being sponsored. '}
+            Monthly Limit: <strong className="text-white">€{profile.creditLimit?.toFixed(2)} Credits</strong>.
+          </p>
         </div>
       </div>
     );
@@ -372,13 +398,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
               <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">Active</span>
             </div>
-            <div className="p-3 bg-[#121212] rounded border border-[#333333] flex justify-between items-center">
-              <div>
-                <p className="text-[#F5F5F5] text-sm font-mono">sk-proj-c4d5...1a9e</p>
-                <p className="text-[#666666] text-xs">Created: Jul 01, 2026</p>
-              </div>
-              <span className="text-xs text-red-400 bg-red-400/10 px-2 py-1 rounded">Revoked</span>
-            </div>
           </div>
         </div>
         
@@ -397,49 +416,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </button>
         </div>
       </div>
+      
+      {/* Show Standard Usage Breakdown too for Developers */}
+      <h2 className="text-lg font-bold text-[#F5F5F5] uppercase tracking-wider mb-4 border-b border-[#333333] pb-2 mt-8">
+        API Usage Overview
+      </h2>
+      <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-6 max-w-2xl shadow-lg text-left">
+        {renderUsageMetrics()}
+      </div>
     </>
   );
+
+  const renderUsageMetrics = () => {
+    const limit = profile?.creditLimit || 10;
+    const pct = Math.min((totalCredits / limit) * 100, 100);
+
+    return (
+      <>
+        <div className="flex justify-between items-end mb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Credits Used</span>
+          <span className="text-lg font-mono text-[#F5F5F5]">€{totalCredits.toFixed(4)} <span className="text-sm text-[#666666]">/ €{limit.toFixed(2)}</span></span>
+        </div>
+        <div className="w-full h-2 bg-[#252525] rounded-full overflow-hidden mb-4">
+          <div className="h-full bg-emerald-400 transition-all duration-1000" style={{ width: `${pct}%` }}></div>
+        </div>
+        
+        <div className="space-y-4 mb-4 border-t border-[#252525] pt-4">
+          <p className="text-[10px] font-bold text-[#BDBDBD] uppercase tracking-wider mb-2">Usage by Model</p>
+          {Object.entries(modelStats).length > 0 ? (
+            Object.entries(modelStats).map(([model, stats]) => (
+              <div key={model} className="bg-[#121212] border border-[#333333] p-4 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[#F5F5F5] font-semibold text-sm">{model}</span>
+                  <span className="text-[#FFD54F] font-mono font-bold">€{stats.credits.toFixed(4)}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <span className="text-[#666666] block uppercase tracking-wider text-[10px]">Input Tokens</span>
+                    <span className="text-[#BDBDBD] font-mono">{stats.input.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#666666] block uppercase tracking-wider text-[10px]">Output Tokens</span>
+                    <span className="text-[#BDBDBD] font-mono">{stats.output.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-[#666666] italic">No tokens used yet.</p>
+          )}
+        </div>
+
+        <p className="text-xs text-emerald-400 mt-2 font-semibold">€{(limit - totalCredits).toFixed(4)} credits remaining this month</p>
+      </>
+    );
+  };
 
   const renderStandardDashboard = () => (
     <div className="max-w-3xl mx-auto">
       {renderInvitationsList()}
       {renderEnterpriseLink()}
+      
       <div className="bg-[#1A1A1A] border border-[#333333] rounded-xl p-8 text-center shadow-lg mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none"></div>
-        <h2 className="text-2xl font-bold text-[#F5F5F5] mb-2">Free Trial Tier</h2>
+        <h2 className="text-2xl font-bold text-[#F5F5F5] mb-2">
+          {profile?.enterpriseId ? 'Enterprise Plan' : 'Free Trial Tier'}
+        </h2>
         <p className="text-[#BDBDBD] text-sm mb-8 max-w-lg mx-auto">
-          {profile?.enterpriseId ? 'You are utilizing an enterprise-sponsored plan. Rate limits are dictated by your organization.' : 'You are currently on the free trial. You have access to Anacleto Chat with standard rate limits.'}
+          {profile?.enterpriseId ? 'Your API requests and chat sessions are sponsored by your organization.' : 'You are currently on the free trial. You have 10 Credits (equivalent to €10) to explore Anacleto AI.'}
         </p>
 
-        <div className="bg-[#121212] border border-[#333333] rounded-xl p-6 max-w-md mx-auto mb-8 text-left">
-          <div className="flex justify-between items-end mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#666666]">Chat Tokens Used</span>
-            <span className="text-lg font-mono text-[#F5F5F5]">{totalTokens.toLocaleString()} <span className="text-sm text-[#666666]">/ 10,000</span></span>
-          </div>
-          <div className="w-full h-2 bg-[#252525] rounded-full overflow-hidden mb-4">
-            <div className="h-full bg-emerald-400 transition-all duration-1000" style={{ width: `${Math.min((totalTokens / 10000) * 100, 100)}%` }}></div>
-          </div>
-          
-          <div className="space-y-2 mb-4 border-t border-[#252525] pt-4">
-            <p className="text-[10px] font-bold text-[#BDBDBD] uppercase tracking-wider mb-2">Usage by Model</p>
-            {Object.entries(modelTokens).length > 0 ? (
-              Object.entries(modelTokens).map(([model, count]) => (
-                <div key={model} className="flex justify-between items-center text-xs">
-                  <span className="text-[#666666] font-semibold">{model}</span>
-                  <span className="text-[#FFD54F] font-mono">{count.toLocaleString()}</span>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-[#666666] italic">No tokens used yet.</p>
-            )}
-          </div>
-
-          <p className="text-xs text-emerald-400 mt-2 font-semibold">{((profile?.tokenLimit || 10000) - totalTokens).toLocaleString()} tokens remaining this month</p>
+        <div className="bg-[#121212] border border-[#333333] rounded-xl p-6 max-w-md mx-auto mb-8 text-left shadow-lg">
+          {renderUsageMetrics()}
         </div>
 
-        <button className="px-6 py-3 bg-[#FFD54F] text-black font-bold uppercase tracking-wider rounded-lg hover:bg-[#FFCA28] transition-colors shadow-lg shadow-[#FFD54F]/20">
-          Upgrade Plan
-        </button>
+        {!profile?.enterpriseId && (
+          <button className="px-6 py-3 bg-[#FFD54F] text-black font-bold uppercase tracking-wider rounded-lg hover:bg-[#FFCA28] transition-colors shadow-lg shadow-[#FFD54F]/20">
+            Upgrade Plan
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

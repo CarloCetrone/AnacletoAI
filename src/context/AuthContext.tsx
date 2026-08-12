@@ -12,7 +12,7 @@ export interface UserProfile {
   username?: string;
   enterpriseName?: string;
   enterpriseId?: string;
-  tokenLimit?: number;
+  creditLimit?: number;
   createdAt: string;
   lastLoginAt: string;
   gdprConsent: {
@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         username: data.username,
         enterpriseName: data.enterprise_name,
         enterpriseId: data.enterprise_id,
-        tokenLimit: data.token_limit,
+        creditLimit: data.credit_limit,
         createdAt: data.created_at || u.created_at,
         lastLoginAt: u.last_sign_in_at || new Date().toISOString(),
         gdprConsent: {
