@@ -174,23 +174,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             .from('profiles')
             .select('*')
             .eq('enterprise_id', user.id);
+            
+          const { data: ownerProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
           
-          if (members) {
+          let allMembers = members ? [...members] : [];
+          if (ownerProfile) {
             // Ensure owner is at the top
-            let sortedMembers = [...members];
-            const ownerIndex = sortedMembers.findIndex(m => m.id === user.id);
-            if (ownerIndex !== -1) {
-              const owner = sortedMembers.splice(ownerIndex, 1)[0];
-              owner.username = owner.username ? `${owner.username} (Owner)` : 'Owner';
-              sortedMembers.unshift(owner);
-            }
-            setEnterpriseMembers(sortedMembers);
+            ownerProfile.username = ownerProfile.username ? `${ownerProfile.username} (Owner)` : (ownerProfile.enterprise_name ? `${ownerProfile.enterprise_name} (Owner)` : 'Owner');
+            ownerProfile.credit_limit = ownerProfile.credit_limit || 999999; // Unlimited for UI
+            allMembers.unshift(ownerProfile);
           }
+          setEnterpriseMembers(allMembers);
 
           const { data: usageData, error: usageError } = await supabase
             .from('token_usage')
             .select('user_id, model_name, input_tokens, output_tokens, created_at')
-            .eq('enterprise_id', user.id);
+            .or(`enterprise_id.eq.${user.id},and(user_id.eq.${user.id},enterprise_id.is.null)`);
             
           if (usageError) console.error("Error fetching usage:", usageError);
             
@@ -206,14 +209,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               const credits = calculateCredits(row.model_name, row.input_tokens, row.output_tokens);
 
               if (!usageMap[row.user_id]) {
-                const foundMember = members?.find(m => m.id === row.user_id);
+                const foundMember = allMembers.find(m => m.id === row.user_id);
                 const isOwner = row.user_id === user.id;
                 usageMap[row.user_id] = { 
                   input: 0, 
                   output: 0, 
                   lifetime_credits: 0, 
                   monthly_credits: 0,
-                  username: foundMember ? (isOwner ? `${foundMember.username} (Owner)` : foundMember.username) : 'Removed User' 
+                  username: foundMember ? foundMember.username : 'Removed User' 
                 };
               }
               
