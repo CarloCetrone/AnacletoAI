@@ -10,10 +10,6 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
 import { useAuth } from '@/context/AuthContext';
 
-// CSS for LaTeX
-import 'katex/dist/katex.min.css';
-import Latex from 'react-latex-next';
-
 // Dynamic import for model-viewer to avoid SSR issues
 const ModelViewer = dynamic(() => import('@google/model-viewer').then(() => {
   return function ModelViewerComponent(props: any) {
@@ -472,7 +468,10 @@ export const SecureChatView: React.FC = () => {
         {msg.models3D && msg.models3D.length > 0 && (
            <div className="flex flex-col gap-3 my-3">
               {msg.models3D.map((res, idx) => {
-                 const glbUrl = res?.model_url || (typeof res === 'string' && res.startsWith('http') ? res : '');
+                 let glbUrl = typeof res === 'string' && res.startsWith('http') ? res : (res?.model_url || '');
+                 if (typeof res === 'string' && res.length > 1000 && !res.startsWith('http')) {
+                    glbUrl = `data:model/gltf-binary;base64,${res}`;
+                 }
                  return glbUrl ? (
                    <div key={idx} className="h-64 w-full max-w-sm rounded-xl overflow-hidden border border-[#333333] bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a]">
                      <ModelViewer src={glbUrl} auto-rotate camera-controls style={{ width: '100%', height: '100%' }} />
@@ -489,26 +488,25 @@ export const SecureChatView: React.FC = () => {
 
         {msg.latexBlocks && msg.latexBlocks.length > 0 && (
            <div className="flex flex-col gap-3 my-3">
-              {msg.latexBlocks.map((block, idx) => (
-                 <div key={idx} className="border border-[#333333] rounded-lg overflow-hidden bg-white text-black shadow-md">
-                   <div className="bg-[#f5f5f5] p-3 flex justify-between items-center border-b border-gray-300">
-                     <span className="flex items-center gap-2 font-bold text-gray-800 text-sm">
+              {msg.latexBlocks.map((block, idx) => {
+                 const pdfUrl = `https://latexonline.cc/compile?text=${encodeURIComponent(block.code)}`;
+                 return (
+                 <div key={idx} className="border border-[#333333] rounded-lg overflow-hidden bg-[#1A1A1A] text-white shadow-md">
+                   <div className="bg-[#252525] p-3 flex justify-between items-center border-b border-[#333333]">
+                     <span className="flex items-center gap-2 font-bold text-sm">
                        <BookOpen className="w-4 h-4 text-[#FFD54F]" /> 
                        {block.isSlideshow ? 'Beamer Presentation' : 'LaTeX Document Rendering'}
                      </span>
-                     <button onClick={() => {
-                       const pdfUrl = `https://latexonline.cc/compile?text=${encodeURIComponent(block.code)}`;
-                       window.open(pdfUrl, '_blank');
-                     }} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD54F] text-black text-xs font-bold rounded hover:bg-[#ffc107] transition-colors">
-                       <Download className="w-3.5 h-3.5"/> PDF Export
+                     <button onClick={() => window.open(pdfUrl, '_blank')} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD54F] text-black text-xs font-bold rounded hover:bg-[#ffc107] transition-colors">
+                       <Maximize2 className="w-3.5 h-3.5"/> Open Full Screen
                      </button>
                    </div>
-                   <div className="p-6 overflow-y-auto max-h-[500px]">
-                     {/* Try to render math, otherwise show raw */}
-                     <Latex strict={false}>{block.code}</Latex>
+                   <div className="w-full h-[600px] bg-white">
+                     <iframe src={pdfUrl} className="w-full h-full border-0" title="PDF Viewer" />
                    </div>
                  </div>
-              ))}
+                 );
+              })}
            </div>
         )}
 

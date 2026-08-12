@@ -5,11 +5,18 @@ async function testFlux() {
   const res = await fetch("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b", {
     method: "POST",
     headers: { "Authorization": `Bearer ${NVIDIA_API_KEY}`, "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ prompt: "A frog", image: [""], width: 1024, height: 1024, seed: 1234, steps: 4 })
+    body: JSON.stringify({
+        prompt: "A detailed photograph of an apple on a table",
+        width: 1024,
+        height: 1024,
+        seed: 12345,
+        steps: 4
+      })
   });
   console.log("Flux Status:", res.status);
-  const text = await res.text();
-  console.log("Flux Response:", text.substring(0, 200));
+  const json = await res.json().catch(() => null);
+  console.log("Flux JSON Response keys:", json ? Object.keys(json) : "Not JSON");
+  if (json && json.detail) console.log("Flux Error:", json.detail);
 }
 
 async function testTrellis() {
@@ -17,11 +24,14 @@ async function testTrellis() {
   const res = await fetch("https://ai.api.nvidia.com/v1/genai/microsoft/trellis", {
     method: "POST",
     headers: { "Authorization": `Bearer ${NVIDIA_API_KEY}`, "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ prompt: "A frog", slat_cfg_scale: 3, ss_cfg_scale: 7.5, slat_sampling_steps: 25, ss_sampling_steps: 25, seed: 1234 })
+    body: JSON.stringify({
+        prompt: "A red apple"
+      })
   });
   console.log("Trellis Status:", res.status);
-  const text = await res.text();
-  console.log("Trellis Response:", text.substring(0, 200));
+  const json = await res.json().catch(() => null);
+  console.log("Trellis JSON Response keys:", json ? Object.keys(json) : "Not JSON");
+  if (json && json.detail) console.log("Trellis Error:", json.detail);
 }
 
 await testFlux();

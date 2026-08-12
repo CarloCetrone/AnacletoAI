@@ -42,7 +42,6 @@ async function executeGenerateImage(prompt: string, apiKey: string): Promise<any
       },
       body: JSON.stringify({
         prompt: prompt,
-        mode: "Image Generation",
         width: 1024,
         height: 1024,
         seed: Math.floor(Math.random() * 100000),
@@ -68,9 +67,7 @@ async function executeGenerate3DModel(prompt: string, apiKey: string): Promise<a
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        prompt: prompt,
-        seed: Math.floor(Math.random() * 100000),
-        output_format: "glb"
+        prompt: prompt
       })
     });
     if (!res.ok) throw new Error(`3D Gen Error: ${await res.text()}`);
@@ -180,6 +177,7 @@ serve(async (req) => {
     if (model3D) baseSystemPrompt += "\n- You have a 'generate_3d_model' tool to create 3D assets.";
     if (pdfGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write LaTeX code for documents.";
     if (slideshowGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write Beamer slideshows.";
+    if (deepReasoning) baseSystemPrompt += "\n- You MUST think step by step before answering. Wrap your reasoning in <thought>...</thought> XML tags.";
     
     currentMessages.push({ role: "system", content: baseSystemPrompt });
 
@@ -253,17 +251,16 @@ serve(async (req) => {
                   const res = await executeGenerateImage(args.prompt, NVIDIA_API_KEY);
                   toolResultStr = JSON.stringify(res);
                   
-                  // The NVIDIA API returns either { image: "base64..." } or { data: [{ b64_json: "..." }] }
-                  const b64 = res.image || (res.data && res.data[0] && res.data[0].b64_json);
+                  const b64 = res.artifacts?.[0]?.base64 || res.image || (res.data && res.data[0] && res.data[0].b64_json);
                   if (b64) {
                      sendEvent("image_generated", { base64: b64 });
                   }
-
                 } else if (toolCall.function.name === "generate_3d_model") {
                   const res = await executeGenerate3DModel(args.prompt, NVIDIA_API_KEY);
                   toolResultStr = JSON.stringify(res);
-                  // Not entirely sure of Trellis response format without docs, assuming it might return a URL or base64
-                  sendEvent("model_3d_generated", { result: res });
+                  
+                  const b64 = res.artifacts?.[0]?.base64;
+                  sendEvent("model_3d_generated", { result: b64 || res });
                 } else if (toolCall.function.name === "generate_latex") {
                   toolResultStr = "LaTeX generated successfully. It will be compiled by the client.";
                   sendEvent("latex_generated", { code: args.latex_code, isSlideshow: args.is_slideshow });
