@@ -60,9 +60,13 @@ export const SecureChatView: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
-  const [selectedModel, setSelectedModel] = useState<'meta/llama-3.1-70b-instruct' | 'nvidia/nemotron-3.5-lightning-30b-a3b'>('meta/llama-3.1-70b-instruct');
+  const [selectedModel, setSelectedModel] = useState<'anacleto-large' | 'anacleto-medium' | 'anacleto-small'>('anacleto-large');
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false);
+  const [imageGenEnabled, setImageGenEnabled] = useState(false);
+  const [model3DEnabled, setModel3DEnabled] = useState(false);
+  const [pdfGenEnabled, setPdfGenEnabled] = useState(false);
+  const [slideshowGenEnabled, setSlideshowGenEnabled] = useState(false);
   const [openThinkId, setOpenThinkId] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
 
@@ -77,9 +81,9 @@ export const SecureChatView: React.FC = () => {
       messages: [{
         id: 'welcome-msg',
         sender: 'ai',
-        text: 'Welcome to Anacleto AI. I can now search the web, generate Images, 3D Models, and LaTeX documents on the fly.',
+        text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'Llama 3.1 70B'
+        modelUsed: 'Anacleto-Large'
       }]
     }
   ]);
@@ -186,7 +190,7 @@ export const SecureChatView: React.FC = () => {
     }
 
     const aiMsgId = (Date.now() + 1).toString();
-    const defaultModelName = activeModelKey === 'meta/llama-3.1-70b-instruct' ? 'Llama 3.1 70B' : 'Nemotron 3.5';
+    const defaultModelName = activeModelKey === 'anacleto-small' ? 'Anacleto-Small' : activeModelKey === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large';
 
     const initialAiMsg: ChatMessage = {
       id: aiMsgId,
@@ -246,7 +250,7 @@ export const SecureChatView: React.FC = () => {
       const res = await fetch(SUPABASE_FUNCTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ message: userMsgText, attachment: attachedName || '', fileContent: attachedContent || '', webSearch: webSearchEnabled, deepReasoning: deepReasoningEnabled, model: activeModelKey, history: historyContext })
+        body: JSON.stringify({ message: userMsgText, attachment: attachedName || '', fileContent: attachedContent || '', webSearch: webSearchEnabled, deepReasoning: deepReasoningEnabled, imageGen: imageGenEnabled, model3D: model3DEnabled, pdfGen: pdfGenEnabled, slideshowGen: slideshowGenEnabled, model: activeModelKey, history: historyContext })
       });
 
       if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -517,8 +521,9 @@ export const SecureChatView: React.FC = () => {
             <div className="relative flex items-center">
               <Cpu className="w-3.5 h-3.5 text-[#FFD54F] absolute left-3 pointer-events-none z-10" />
               <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value as any)} className="bg-[#252525]/80 text-[#FFD54F] border border-[#FFD54F]/30 pl-9 pr-8 py-1.5 rounded-full text-[11px] font-mono font-bold focus:outline-none focus:border-[#FFD54F] hover:bg-[#2F2F2F] transition-all appearance-none shadow-sm">
-                <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B (Tools Enabled)</option>
-                <option value="nvidia/nemotron-3.5-lightning-30b-a3b">Nemotron 3.5 30B (Fast)</option>
+                <option value="anacleto-large">Anacleto-Large (Omni)</option>
+                <option value="anacleto-medium">Anacleto-Medium (Balanced)</option>
+                <option value="anacleto-small">Anacleto-Small (Compact)</option>
               </select>
               <ChevronDown className="w-3 h-3 text-[#FFD54F] absolute right-3 pointer-events-none" />
             </div>
@@ -557,6 +562,23 @@ export const SecureChatView: React.FC = () => {
 
         <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0a0a0a] to-transparent max-w-5xl w-full mx-auto pb-6">
           <div className="bg-[#1A1A1A]/90 backdrop-blur-xl border border-[#333333] rounded-2xl p-2 shadow-2xl">
+            <div className="flex items-center gap-2 overflow-x-auto mb-2 px-2 pt-1 pb-2 border-b border-[#333333]/50">
+              {[
+                { label: 'Web', state: webSearchEnabled, set: setWebSearchEnabled, icon: Globe },
+                { label: 'Think', state: deepReasoningEnabled, set: setDeepReasoningEnabled, icon: Brain },
+                { label: 'Image', state: imageGenEnabled, set: setImageGenEnabled, icon: ImageIcon },
+                { label: '3D', state: model3DEnabled, set: setModel3DEnabled, icon: Box },
+                { label: 'PDF', state: pdfGenEnabled, set: setPdfGenEnabled, icon: BookOpen },
+                { label: 'Slides', state: slideshowGenEnabled, set: setSlideshowGenEnabled, icon: Layout }
+              ].map(t => (
+                <button
+                  key={t.label} type="button" onClick={() => t.set(!t.state)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${t.state ? 'bg-[#FFD54F] text-black shadow-sm' : 'bg-[#252525] text-[#BDBDBD] hover:text-white hover:bg-[#333]'}`}
+                >
+                  <t.icon className="w-3.5 h-3.5" /> {t.label}
+                </button>
+              ))}
+            </div>
             {selectedFile && (
               <div className="mb-2 mx-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#252525] border border-[#FFD54F]/40 text-xs text-[#FFD54F] font-mono shadow-md">
                 <FileText className="w-3.5 h-3.5" />
@@ -570,7 +592,7 @@ export const SecureChatView: React.FC = () => {
               <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute left-2 p-2.5 rounded-xl text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors"><Paperclip className="w-5 h-5" /></button>
               <textarea
                 rows={1} value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
-                placeholder={`Ask ${selectedModel.includes('llama') ? 'Llama 3.1' : 'Nemotron'} to generate images, 3D models, write LaTeX, or search the web...`}
+                placeholder={`Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'} to use tools or chat...`}
                 className="w-full pl-14 pr-16 py-4 rounded-xl bg-transparent text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none resize-none"
               />
               <button type="submit" disabled={(!inputMessage.trim() && !selectedFile) || loading} className="absolute right-2 p-3 rounded-xl bg-gradient-to-r from-[#FFD54F] to-[#ffc107] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 text-[#000000] transition-all shadow-md">

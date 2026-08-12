@@ -4,8 +4,8 @@ import OpenAI from "https://esm.sh/openai@4.28.0";
 
 const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "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";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-// Using Llama-3.1-70B as it has robust function calling support compared to Nemotron
-const MODEL_NAME = "meta/llama-3.1-70b-instruct"; 
+// Reverted back to Nemotron as requested
+const MODEL_NAME = "nvidia/nemotron-3.5-lightning-30b-a3b"; 
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,7 +143,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { message, history, attachment, fileContent, deepReasoning, webSearch, model } = await req.json();
+    const { message, history, attachment, fileContent, deepReasoning, webSearch, imageGen, model3D, pdfGen, slideshowGen, model } = await req.json();
 
     // Authenticate user via Supabase JWT
     const authHeader = req.headers.get("Authorization");
@@ -176,7 +176,15 @@ serve(async (req) => {
     if (profile.credit_balance <= 0 && !profile.enterprise_id) throw new Error("Payment Required: Wallet empty.");
 
     const currentMessages: any[] = [];
-    currentMessages.push({ role: "system", content: "You are an advanced AI assistant. You have access to tools for web search, image generation, 3D model generation, and LaTeX generation. Use them when appropriate." });
+    
+    let baseSystemPrompt = "You are an advanced AI assistant.";
+    if (webSearch) baseSystemPrompt += "\n- You have a 'web_search' tool to search the internet.";
+    if (imageGen) baseSystemPrompt += "\n- You have a 'generate_image' tool to create images.";
+    if (model3D) baseSystemPrompt += "\n- You have a 'generate_3d_model' tool to create 3D assets.";
+    if (pdfGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write LaTeX code for documents.";
+    if (slideshowGen) baseSystemPrompt += "\n- You have a 'generate_latex' tool to write Beamer slideshows.";
+    
+    currentMessages.push({ role: "system", content: baseSystemPrompt });
 
     if (Array.isArray(history)) {
       for (const item of history) {
@@ -206,13 +214,21 @@ serve(async (req) => {
           let finalOutputTokens = 0;
           
           while (!runComplete) {
+            const activeTools = chatTools.filter(t => {
+              if (t.function.name === "web_search" && webSearch) return true;
+              if (t.function.name === "generate_image" && imageGen) return true;
+              if (t.function.name === "generate_3d_model" && model3D) return true;
+              if (t.function.name === "generate_latex" && (pdfGen || slideshowGen)) return true;
+              return false;
+            });
+
             const streamOptions: any = {
               model: MODEL_NAME,
               messages: currentMessages,
               temperature: 0.7,
               max_tokens: 4096,
-              tools: webSearch ? chatTools : chatTools.filter(t => t.function.name !== "web_search"),
-              tool_choice: "auto",
+              tools: activeTools.length > 0 ? activeTools : undefined,
+              tool_choice: activeTools.length > 0 ? "auto" : undefined,
               stream: false, // For simpler tool loop, we do non-streaming rounds until final response
             };
 
