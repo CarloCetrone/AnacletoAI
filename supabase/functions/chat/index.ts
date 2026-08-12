@@ -132,14 +132,10 @@ serve(async (req) => {
           };
 
           if (deepReasoning) {
-             requestBody.extra_body = {
-                chat_template_kwargs: { enable_thinking: true },
-                reasoning_budget: 16384
-             };
+             requestBody.chat_template_kwargs = { enable_thinking: true };
+             requestBody.reasoning_budget = 16384;
           } else {
-             requestBody.extra_body = {
-                chat_template_kwargs: { enable_thinking: false }
-             };
+             requestBody.chat_template_kwargs = { enable_thinking: false };
           }
 
           const response = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
