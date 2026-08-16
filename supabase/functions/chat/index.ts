@@ -214,9 +214,11 @@ CRITICAL INSTRUCTIONS:
           let runComplete = false;
           let finalInputTokens = 0;
           let finalOutputTokens = 0;
+          let usedTools = new Set<string>();
           
           while (!runComplete) {
             const activeTools = chatTools.filter(t => {
+              if (usedTools.has(t.function.name)) return false;
               if (t.function.name === "web_search" && webSearch) return true;
               if (t.function.name === "generate_image" && imageGen) return true;
               if (t.function.name === "generate_3d_model" && model3D) return true;
@@ -238,6 +240,8 @@ CRITICAL INSTRUCTIONS:
             if (deepReasoning) {
                streamOptions.chat_template_kwargs = { enable_thinking: true };
                streamOptions.reasoning_budget = 4096;
+            } else {
+               streamOptions.chat_template_kwargs = { enable_thinking: false };
             }
 
             const responseStream = await openai.chat.completions.create(streamOptions) as any;
@@ -275,9 +279,19 @@ CRITICAL INSTRUCTIONS:
                }
             }
 
-            const assembledToolCalls = Object.values(toolCallsMap);
+            let assembledToolCalls = Object.values(toolCallsMap);
 
             if (assembledToolCalls.length > 0) {
+              const uniqueToolCalls = [];
+              const seenToolsInThisTurn = new Set();
+              for (const tc of assembledToolCalls as any[]) {
+                 if (!seenToolsInThisTurn.has(tc.function.name)) {
+                    uniqueToolCalls.push(tc);
+                    seenToolsInThisTurn.add(tc.function.name);
+                 }
+              }
+              assembledToolCalls = uniqueToolCalls;
+
               currentMessages.push({ role: "assistant", content: fullContent || null, tool_calls: assembledToolCalls });
               
               for (const toolCall of assembledToolCalls as any[]) {
@@ -319,6 +333,7 @@ CRITICAL INSTRUCTIONS:
                 });
                 
                 sendEvent("tool_end", { name: toolCall.function.name });
+                usedTools.add(toolCall.function.name);
               }
             } else {
               runComplete = true;

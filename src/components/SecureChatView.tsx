@@ -87,12 +87,31 @@ export const SecureChatView: React.FC = () => {
               id: s.id,
               title: s.title || 'Conversation',
               createdAt: new Date(s.created_at).toLocaleTimeString(),
-              messages: (msgs || []).map((m: any) => ({
-                id: m.id,
-                sender: m.sender,
-                text: m.text || '',
-                timestamp: new Date(m.created_at).toLocaleTimeString(),
-              }))
+              messages: (msgs || []).map((m: any) => {
+                let parsedText = m.text || '';
+                let extra: any = {};
+                if (m.sender === 'ai' && typeof parsedText === 'string' && parsedText.startsWith('{')) {
+                  try {
+                    const parsed = JSON.parse(parsedText);
+                    if (parsed.text !== undefined) {
+                      parsedText = parsed.text;
+                      extra = parsed;
+                    }
+                  } catch (e) {}
+                }
+                return {
+                  id: m.id,
+                  sender: m.sender,
+                  text: parsedText,
+                  timestamp: new Date(m.created_at).toLocaleTimeString(),
+                  thoughts: extra.thoughts,
+                  images: extra.images,
+                  models3D: extra.models3D,
+                  latexBlocks: extra.latexBlocks,
+                  searchSummary: extra.searchSummary,
+                  sources: extra.sources
+                };
+              })
             });
             loadedSessionIds.current.add(s.id);
           }
@@ -277,6 +296,14 @@ export const SecureChatView: React.FC = () => {
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
+      let finalAiText = '';
+      let finalThoughts = '';
+      let finalImages: string[] = [];
+      let finalModels3D: any[] = [];
+      let finalLatexBlocks: any[] = [];
+      let finalSearchSummary = '';
+      let finalSources: string[] = [];
+
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
@@ -299,10 +326,12 @@ export const SecureChatView: React.FC = () => {
               try {
                 const eventData = JSON.parse(dataStr);
                 if (eventType === 'text' && eventData.chunk) {
+                   finalAiText += eventData.chunk;
                    setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                      ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, text: (m.text || '') + eventData.chunk } : m)
                    } : s));
                 } else if (eventType === 'reasoning' && eventData.chunk) {
+                   finalThoughts += eventData.chunk;
                    setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                      ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, thoughts: (m.thoughts || '') + eventData.chunk } : m)
                    } : s));
@@ -323,24 +352,46 @@ export const SecureChatView: React.FC = () => {
                     } : m)
                   } : s));
                 } else if (eventType === 'image_generated') {
+                  finalImages.push(eventData.base64);
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, images: [...(m.images || []), eventData.base64] } : m)
                   } : s));
                 } else if (eventType === 'model_3d_generated') {
+                  finalModels3D.push(eventData.result);
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, models3D: [...(m.models3D || []), eventData.result] } : m)
                   } : s));
                 } else if (eventType === 'latex_generated') {
+                  finalLatexBlocks.push({ code: eventData.code, isSlideshow: eventData.isSlideshow });
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, latexBlocks: [...(m.latexBlocks || []), { code: eventData.code, isSlideshow: eventData.isSlideshow }] } : m)
                   } : s));
                 } else if (eventType === 'searchSummary') {
+                  finalSearchSummary = eventData.summary;
+                  finalSources = eventData.sources || [];
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, searchSummary: eventData.summary, sources: eventData.sources } : m)
                   } : s));
                 } else if (eventType === 'done') {
                    isStreamingRef.current = false;
                    setLoading(false);
+                   
+                   if (isConfigured && session?.user && !currentSessionId.startsWith('session-')) {
+                     const aiPayload = {
+                       text: finalAiText,
+                       thoughts: finalThoughts,
+                       images: finalImages,
+                       models3D: finalModels3D,
+                       latexBlocks: finalLatexBlocks,
+                       searchSummary: finalSearchSummary,
+                       sources: finalSources
+                     };
+                     supabase.from('chat_messages').insert({
+                       session_id: currentSessionId,
+                       sender: 'ai',
+                       text: JSON.stringify(aiPayload)
+                     }).then();
+                   }
                 } else if (eventType === 'error') {
                   throw new Error(eventData.message);
                 }
