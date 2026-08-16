@@ -281,11 +281,11 @@ CRITICAL INSTRUCTIONS:
                }
             }
 
-            let assembledToolCalls = Object.values(toolCallsMap);
+            let assembledToolCalls: any[] = Object.values(toolCallsMap);
 
             if (assembledToolCalls.length > 0) {
-              const uniqueToolCalls = [];
-              const seenToolsInThisTurn = new Set();
+              const uniqueToolCalls: any[] = [];
+              const seenToolsInThisTurn = new Set<string>();
               for (const tc of assembledToolCalls as any[]) {
                  if (!seenToolsInThisTurn.has(tc.function.name)) {
                     uniqueToolCalls.push(tc);
