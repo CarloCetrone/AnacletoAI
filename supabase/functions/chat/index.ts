@@ -96,7 +96,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_image",
-      description: "Generate a high-quality image using the Flux model. Use this tool ONLY when the user explicitly requests an image, drawing, or visual representation.",
+      description: "Generate a high-quality image using the Flux model. Use this tool ONLY when the user explicitly requests an image, drawing, or visual representation. NEVER output base64 strings or markdown image links in your text response. The client UI will display it automatically.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "A highly detailed, descriptive prompt for the image generator. Include artistic style, lighting, framing, and specific visual elements." } },
@@ -108,7 +108,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_3d_model",
-      description: "Generate a 3D model asset (GLB/GLTF) based on a text description. Use this when the user asks for a 3D object, model, or CAD asset.",
+      description: "Generate a 3D model asset (GLB/GLTF) based on a text description. Use this when the user asks for a 3D object, model, or CAD asset. NEVER output base64 strings or download links in your text response. The client UI will display it automatically.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "A clear, concise description of the 3D object to generate." } },
@@ -120,7 +120,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_latex",
-      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document. Do NOT use undefined control sequences like \\semicolon. Stick to standard, widely supported LaTeX packages and commands. Keep it simple enough to compile safely.",
+      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document. Do NOT use undefined control sequences like \\semicolon. Stick to standard, widely supported LaTeX packages and commands. Keep it simple enough to compile safely. NEVER output base64 strings or markdown download links in your text response. The client UI will display it automatically.",
       parameters: {
         type: "object",
         properties: { 
