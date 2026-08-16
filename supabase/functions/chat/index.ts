@@ -229,8 +229,9 @@ CRITICAL INSTRUCTIONS:
             const streamOptions: any = {
               model: MODEL_NAME,
               messages: currentMessages,
-              temperature: 0.7,
-              max_tokens: 4096,
+              temperature: 1,
+              top_p: 0.95,
+              max_tokens: 16384,
               tools: activeTools.length > 0 ? activeTools : undefined,
               tool_choice: activeTools.length > 0 ? "auto" : undefined,
               stream: true,
@@ -238,10 +239,11 @@ CRITICAL INSTRUCTIONS:
             };
 
             if (deepReasoning) {
-               streamOptions.chat_template_kwargs = { enable_thinking: true };
-               streamOptions.reasoning_budget = 4096;
+               streamOptions.chat_template_kwargs = { "enable_thinking": true };
+               streamOptions.reasoning_budget = 16384;
             } else {
-               streamOptions.chat_template_kwargs = { enable_thinking: false };
+               streamOptions.chat_template_kwargs = { "enable_thinking": false };
+               streamOptions.reasoning_budget = 0;
             }
 
             const responseStream = await openai.chat.completions.create(streamOptions) as any;
