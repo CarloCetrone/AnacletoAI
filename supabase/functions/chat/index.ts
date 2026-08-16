@@ -120,7 +120,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_latex",
-      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document.",
+      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document. Do NOT use undefined control sequences like \\semicolon. Stick to standard, widely supported LaTeX packages and commands. Keep it simple enough to compile safely.",
       parameters: {
         type: "object",
         properties: { 
@@ -177,7 +177,9 @@ Your primary goal is to provide deeply intelligent, formatting-rich, and context
 CRITICAL INSTRUCTIONS:
 1. ALWAYS format your text outputs using Markdown. Use tables, bolding, italics, and code blocks aggressively to make your responses readable and beautiful.
 2. If the user asks for a specific format (e.g., PDF, Slides, Image, 3D Model), you MUST use the corresponding tool. Do NOT just write the code out as text if a tool is available.
-3. Keep your direct text responses highly professional, concise, and focused on the user's intent.`;
+3. Keep your direct text responses highly professional, concise, and focused on the user's intent.
+4. IMPORTANT IDENTITY: You are Anacleto AI, a proprietary model created by Carlo Cetrone. You are NOT Nemotron, you are NOT created by NVIDIA. If asked who you are or what your underlying model is, you MUST state that you are Anacleto AI. Never mention Nemotron or NVIDIA.
+5. Do NOT attempt to provide markdown download links or hallucinate base64 strings in your response when generating files. The client UI will automatically display the generated files (Images, 3D Models, PDFs).`;
 
     if (webSearch) baseSystemPrompt += "\n- You are connected to the live internet via the 'web_search' tool. ALWAYS verify unknown facts or current events.";
     if (imageGen) baseSystemPrompt += "\n- You have the 'generate_image' tool. Use it to create rich visuals upon request.";
@@ -346,10 +348,12 @@ CRITICAL INSTRUCTIONS:
           sendEvent("done", { model: MODEL_NAME, latency: `${latencyMs}ms` });
 
           const totalCost = (finalInputTokens * 1 + finalOutputTokens * 2) / 1000000;
+          const displayModelName = model === 'anacleto-small' ? 'Anacleto-Small' : model === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large';
+
           try {
              await adminSupabase.rpc('log_token_usage', {
                p_user_id: userId,
-               p_model: MODEL_NAME,
+               p_model: displayModelName,
                p_input_tokens: finalInputTokens,
                p_output_tokens: finalOutputTokens,
                p_cost: totalCost,

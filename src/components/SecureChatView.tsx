@@ -419,7 +419,7 @@ export const SecureChatView: React.FC = () => {
     const newSessionId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newSessionId, title: 'New Conversation', createdAt: new Date().toLocaleTimeString(),
-      messages: [{ id: `welcome-${newSessionId}`, sender: 'ai', text: 'How can I assist you today?', timestamp: new Date().toLocaleTimeString(), modelUsed: 'Llama 3.1 70B' }]
+      messages: [{ id: `welcome-${newSessionId}`, sender: 'ai', text: 'How can I assist you today?', timestamp: new Date().toLocaleTimeString(), modelUsed: selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large' }]
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSessionId);
