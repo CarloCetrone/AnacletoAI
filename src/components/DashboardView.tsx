@@ -86,9 +86,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       // 1. Fetch Real User Profile Balance & Sponsorship from Supabase DB
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('credit_balance, credit_limit, enterprise_id, username')
+        .select('credit_balance, credit_limit, enterprise_id, username, account_type, enterprise_name')
         .eq('id', user.id)
         .maybeSingle();
+
+      const isEnterpriseAccount = profileData?.account_type === 'enterprise' || profile?.accountType === 'enterprise';
 
       if (profileData) {
         if (profileData.credit_balance !== null && profileData.credit_balance !== undefined) {
@@ -104,11 +106,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         if (profileData.enterprise_id) {
           const { data: entProfile } = await supabase
             .from('profiles')
-            .select('enterprise_name, full_name, email')
+            .select('enterprise_name, username')
             .eq('id', profileData.enterprise_id)
             .maybeSingle();
           if (entProfile) {
-            setSponsoringEnterpriseName(entProfile.enterprise_name || entProfile.full_name || entProfile.email);
+            setSponsoringEnterpriseName(entProfile.enterprise_name || entProfile.username || 'Enterprise Partner');
           }
         } else {
           setSponsoringEnterpriseName(null);
@@ -116,7 +118,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       }
 
       // 2. Fetch Pending Enterprise Invitations for current user
-      const userIdentifier = profile?.username || profileData?.username || user.email;
+      const userIdentifier = profileData?.username || profile?.username;
       if (userIdentifier) {
         const { data: invData } = await supabase
           .from('enterprise_invitations')
@@ -131,11 +133,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         }
       }
 
-      // 3. If current user is an Enterprise Admin, fetch sponsored members & sent invitations
-      if (profile?.accountType === 'enterprise') {
+      // 3. If current user is an Enterprise Admin, fetch sponsored members
+      if (isEnterpriseAccount) {
         const { data: teamData } = await supabase
           .from('profiles')
-          .select('id, full_name, email, username, account_type, credit_balance, credit_limit')
+          .select('id, username, account_type, credit_balance, credit_limit')
           .eq('enterprise_id', user.id);
         
         if (teamData) {
@@ -145,7 +147,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       // 4. Fetch Token Usage Records from Supabase DB
       let usageQuery = supabase.from('token_usage').select('*');
-      if (profile?.accountType === 'enterprise') {
+      if (isEnterpriseAccount) {
         usageQuery = usageQuery.or(`user_id.eq.${user.id},enterprise_id.eq.${user.id}`);
       } else {
         usageQuery = usageQuery.eq('user_id', user.id);
@@ -203,8 +205,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       }
 
       setCreditLimit(Number(inv.credit_limit));
-      setSponsoringEnterpriseName(inv.profiles?.enterprise_name || 'Enterprise Partner');
+      setSponsoringEnterpriseName(inv.enterprise_name || 'Enterprise Partner');
       alert(`Accepted Enterprise Invitation! You now have a sponsored compute credit limit of $${inv.credit_limit}.`);
+      fetchSupabaseData();
     } catch (err) {
       console.error("Accept invite err:", err);
     }
@@ -244,11 +247,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         .select()
         .single();
 
-      // Also check if target profile exists to update enterprise_id directly
+      // Check if target profile exists by username
       const { data: targetUser } = await supabase
         .from('profiles')
-        .select('*')
-        .or(`email.eq.${inviteUsername.trim()},username.eq.${inviteUsername.trim()}`)
+        .select('id, username, account_type, credit_balance, credit_limit')
+        .eq('username', inviteUsername.trim())
         .maybeSingle();
 
       if (targetUser) {
@@ -267,7 +270,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       }
 
       setInviteUsername('');
-      alert(`Sent enterprise sponsorship invitation to '${inviteUsername.trim()}' with $${inviteCreditLimit} credit limit!`);
+      alert(`Sent enterprise sponsorship invitation to '@${inviteUsername.trim()}' with $${inviteCreditLimit} credit limit!`);
     } catch (err: any) {
       setSponsorError(err.message || 'Error linking user to Enterprise.');
     } finally {
@@ -963,8 +966,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     sponsoredMembers.map((m) => (
                       <tr key={m.id} className="hover:bg-[#252525]/40 transition-colors">
                         <td className="p-3">
-                          <p className="font-semibold text-white">{m.full_name || m.username || m.email}</p>
-                          <p className="text-[10px] font-mono text-[#666666]">{m.email}</p>
+                          <p className="font-semibold text-white">@{m.username || 'username'}</p>
+                          <p className="text-[10px] font-mono text-[#666666]">Member ID: {m.id ? m.id.substring(0, 8) + '...' : ''}</p>
                         </td>
                         <td className="p-3 uppercase font-mono text-[#FFD54F]">{m.account_type || 'User'}</td>
                         <td className="p-3 font-mono font-bold text-white">${(m.credit_limit || 100).toFixed(2)}</td>
