@@ -14,13 +14,33 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const handleNavClick = (view: string, sectionId?: string) => {
+    setMobileMenuOpen(false);
+    setCurrentView(view);
+    if (sectionId) {
+      let attempts = 0;
+      const scrollTarget = () => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        } else if (attempts < 10) {
+          attempts++;
+          setTimeout(scrollTarget, 100);
+        }
+      };
+      setTimeout(scrollTarget, 50);
+    } else if (view === 'home') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#121212]/90 border-b border-[#333333] transition-all duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Brand Logo */}
           <div 
-            onClick={() => { setCurrentView('home'); setMobileMenuOpen(false); }}
+            onClick={() => handleNavClick('home')}
             className="flex items-center space-x-3 cursor-pointer group"
           >
             <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-[#1A1A1A] border border-[#FFD54F]/40 p-0.5 shadow-lg shadow-[#FFD54F]/10 group-hover:border-[#FFD54F] transition-all">
@@ -42,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center space-x-1">
             <button
-              onClick={() => setCurrentView('home')}
+              onClick={() => handleNavClick('home')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'home'
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
@@ -52,33 +72,41 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               Home
             </button>
             <button
-              onClick={() => {
-                setCurrentView('solutions');
-                // Optional: scroll to solutions section if we had one
-                window.scrollTo({ top: 800, behavior: 'smooth' });
-              }}
+              onClick={() => handleNavClick('home', 'models')}
+              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60"
+            >
+              Models
+            </button>
+            <button
+              onClick={() => handleNavClick('home', 'products')}
+              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60"
+            >
+              APIs & Agents
+            </button>
+            <button
+              onClick={() => handleNavClick('home', 'services')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'solutions'
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Solutions
+              Enterprise Solutions
             </button>
             <button
-              onClick={() => setCurrentView('contact')}
+              onClick={() => handleNavClick('contact')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'contact'
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Contact
+              Contact Us
             </button>
             {user && (
               <>
                 <button
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={() => handleNavClick('dashboard')}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                     currentView === 'dashboard' || currentView === 'service-detail'
                       ? 'text-[#FFD54F] bg-[#1A1A1A]'
@@ -88,7 +116,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                   Dashboard
                 </button>
                 <button
-                  onClick={() => setCurrentView('chat')}
+                  onClick={() => handleNavClick('chat')}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                     currentView === 'chat'
                       ? 'text-[#FFD54F] bg-[#1A1A1A]'
@@ -133,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               </div>
             ) : (
               <button
-                onClick={() => setCurrentView('login')}
+                onClick={() => handleNavClick('login')}
                 className="px-5 py-2 rounded-lg bg-[#FFD54F] text-black hover:bg-[#FFCA28] font-bold text-sm uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#FFD54F]/10 flex items-center"
               >
                 Login
@@ -155,7 +183,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-[#333333] bg-[#121212] px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top duration-200">
             <button
-              onClick={() => { setCurrentView('home'); setMobileMenuOpen(false); }}
+              onClick={() => handleNavClick('home')}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'home' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
@@ -163,24 +191,36 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               Home
             </button>
             <button
-              onClick={() => { setCurrentView('solutions'); setMobileMenuOpen(false); window.scrollTo({ top: 800, behavior: 'smooth' }); }}
+              onClick={() => handleNavClick('home', 'models')}
+              className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:bg-[#1A1A1A]/60"
+            >
+              Models
+            </button>
+            <button
+              onClick={() => handleNavClick('home', 'products')}
+              className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:bg-[#1A1A1A]/60"
+            >
+              APIs & Agents
+            </button>
+            <button
+              onClick={() => handleNavClick('home', 'services')}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'solutions' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Solutions
+              Enterprise Solutions
             </button>
             <button
-              onClick={() => { setCurrentView('contact'); setMobileMenuOpen(false); }}
+              onClick={() => handleNavClick('contact')}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                 currentView === 'contact' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Contact
+              Contact Us
             </button>
             {!user ? (
               <button
-                onClick={() => { setCurrentView('login'); setMobileMenuOpen(false); }}
+                onClick={() => handleNavClick('login')}
                 className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                   currentView === 'login' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
                 }`}
@@ -190,7 +230,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
             ) : (
               <>
                 <button
-                  onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}
+                  onClick={() => handleNavClick('dashboard')}
                   className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                     currentView === 'dashboard' || currentView === 'service-detail'
                       ? 'text-[#FFD54F] bg-[#1A1A1A]' 
@@ -200,7 +240,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                   Dashboard
                 </button>
                 <button
-                  onClick={() => { setCurrentView('chat'); setMobileMenuOpen(false); }}
+                  onClick={() => handleNavClick('chat')}
                   className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
                     currentView === 'chat'
                       ? 'text-[#FFD54F] bg-[#1A1A1A]' 

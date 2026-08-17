@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, Globe, Atom } from 'lucide-react';
+import { ShieldCheck, Globe } from 'lucide-react';
 import { PrivacyPolicyModal } from '@/components/PrivacyPolicyModal';
 
 export const Footer: React.FC = () => {
@@ -11,7 +11,7 @@ export const Footer: React.FC = () => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2 text-[#BDBDBD]">
             <ShieldCheck className="w-4 h-4 text-[#FFD54F]" />
-            <span>© 2026 Anacleto AI Research Lab. EU AI Act & GDPR Ready. 100% Sovereign Data.</span>
+            <span>© 2026 Anacleto AI. All rights reserved.</span>
           </div>
 
           <div className="flex items-center space-x-6 text-xs text-[#BDBDBD]">
@@ -22,13 +22,9 @@ export const Footer: React.FC = () => {
               <ShieldCheck className="w-3.5 h-3.5 text-[#FFD54F]" />
               GDPR Privacy Policy
             </button>
-            <span className="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer">
-              <Lock className="w-3.5 h-3.5 text-[#FFD54F]" />
-              ISO 27001 Certified
-            </span>
-            <span className="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer">
+            <span className="flex items-center gap-1.5 hover:text-white transition-colors cursor-default">
               <Globe className="w-3.5 h-3.5 text-[#FFD54F]" />
-              EU On-Prem (Frankfurt)
+              EU Based
             </span>
           </div>
         </div>

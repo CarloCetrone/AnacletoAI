@@ -73,14 +73,6 @@ function MainAppContent() {
         }
         return <DashboardView onNavigate={navigateTo} />;
       case 'service-detail':
-        if (!user) {
-          setCurrentView('login');
-          return null;
-        }
-        if (profile?.accountType !== 'enterprise') {
-          setCurrentView('dashboard');
-          return null;
-        }
         return <ServiceDetailView serviceId={currentServiceId} onNavigate={navigateTo} />;
       case 'contact':
         return <ContactView />;

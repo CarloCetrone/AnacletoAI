@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4.28.0";
 
-const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "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";
+const NVIDIA_API_KEY = Deno.env.get("NVIDIA_API_KEY") || "";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 // Reverted back to Nemotron as requested
 const MODEL_NAME = "nvidia/nemotron-3.5-lightning-30b-a3b"; 
@@ -146,7 +146,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "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";
+    const tavilyKey = Deno.env.get("TAVILY_API_KEY") || "";
 
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
     let userId = "";
@@ -347,20 +347,41 @@ CRITICAL INSTRUCTIONS:
           const latencyMs = Date.now() - startTime;
           sendEvent("done", { model: MODEL_NAME, latency: `${latencyMs}ms` });
 
-          const totalCost = (finalInputTokens * 1 + finalOutputTokens * 2) / 1000000;
-          const displayModelName = model === 'anacleto-small' ? 'Anacleto-Small' : model === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large';
+          const displayModelName = model === 'anacleto-small' ? 'Anacleto Small' : model === 'anacleto-large' ? 'Anacleto Large' : 'Anacleto Medium';
 
           try {
-             await adminSupabase.rpc('log_token_usage', {
-               p_user_id: userId,
-               p_model: displayModelName,
-               p_input_tokens: finalInputTokens,
-               p_output_tokens: finalOutputTokens,
-               p_cost: totalCost,
-               p_enterprise_id: profile.enterprise_id
+             await adminSupabase.from("token_usage").insert({
+               user_id: userId,
+               model_name: displayModelName,
+               input_tokens: finalInputTokens,
+               output_tokens: finalOutputTokens,
+               enterprise_id: profile?.enterprise_id || null
              });
+
+             // Deduct cost from profiles.credit_balance in Supabase
+             const isLarge = model === 'anacleto-large';
+             const isSmall = model === 'anacleto-small';
+             const inRate = isLarge ? 2.50 : isSmall ? 0.15 : 0.70;
+             const outRate = isLarge ? 10.00 : isSmall ? 0.60 : 2.80;
+             const chatCost = (finalInputTokens * inRate + finalOutputTokens * outRate) / 1000000;
+
+             const targetUserId = profile?.enterprise_id || userId;
+             const { data: userProf } = await adminSupabase
+               .from("profiles")
+               .select("credit_balance")
+               .eq("id", targetUserId)
+               .maybeSingle();
+
+             if (userProf && userProf.credit_balance !== null && userProf.credit_balance !== undefined) {
+               const currentBal = Number(userProf.credit_balance);
+               const newBal = Math.max(0, currentBal - chatCost);
+               await adminSupabase
+                 .from("profiles")
+                 .update({ credit_balance: newBal })
+                 .eq("id", targetUserId);
+             }
           } catch(e) {
-             console.error("Token log err:", e);
+             console.error("Token log & credit deduction err:", e);
           }
 
           controller.close();

@@ -22,6 +22,16 @@ export interface UserProfile {
   };
 }
 
+export interface ApiKeyItem {
+  id: string;
+  userId: string;
+  keyName: string;
+  keyValue: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  lastUsedAt?: string | null;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -35,6 +45,10 @@ interface AuthContextType {
   updateAccountType: (newType: 'standard' | 'developer' | 'enterprise') => Promise<{ error: string | null }>;
   exportUserData: () => void;
   deleteUserAccount: () => Promise<{ error: string | null }>;
+  fetchApiKeys: () => Promise<{ data: ApiKeyItem[]; error: string | null }>;
+  createApiKey: (keyName: string) => Promise<{ data: ApiKeyItem | null; error: string | null }>;
+  toggleApiKeyStatus: (keyId: string, currentStatus: 'active' | 'disabled') => Promise<{ error: string | null }>;
+  deleteApiKey: (keyId: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -347,6 +361,183 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: null };
   };
 
+  // --- API KEY MANAGEMENT METHODS ---
+  const DEMO_KEYS_STORAGE_KEY = 'anacleto_demo_api_keys';
+
+  const fetchApiKeys = async (): Promise<{ data: ApiKeyItem[]; error: string | null }> => {
+    if (!user) return { data: [], error: 'Not authenticated' };
+
+    if (isConfigured) {
+      const { data, error } = await supabase
+        .from('api_keys')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) return { data: [], error: error.message };
+      
+      const mapped: ApiKeyItem[] = (data || []).map((k: any) => ({
+        id: k.id,
+        userId: k.user_id,
+        keyName: k.key_name || k.name || k.label || 'API Secret',
+        keyValue: k.key_value || k.key || k.value || '',
+        status: (k.status as 'active' | 'disabled') || 'active',
+        createdAt: k.created_at || new Date().toISOString(),
+        lastUsedAt: k.last_used_at,
+      }));
+
+      return { data: mapped, error: null };
+    } else {
+      // Demo storage fallback
+      const savedKeys = localStorage.getItem(DEMO_KEYS_STORAGE_KEY);
+      if (savedKeys) {
+        try {
+          const parsed = JSON.parse(savedKeys) as ApiKeyItem[];
+          return { data: parsed.filter(k => k.userId === user.id), error: null };
+        } catch {}
+      }
+      // Initial demo key
+      const initialDemoKey: ApiKeyItem = {
+        id: 'demo-key-1',
+        userId: user.id,
+        keyName: 'Default Production Secret',
+        keyValue: `anc_live_${Math.random().toString(36).substring(2, 12)}${Math.random().toString(36).substring(2, 8)}`,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        lastUsedAt: null,
+      };
+      localStorage.setItem(DEMO_KEYS_STORAGE_KEY, JSON.stringify([initialDemoKey]));
+      return { data: [initialDemoKey], error: null };
+    }
+  };
+
+  const createApiKey = async (keyName: string): Promise<{ data: ApiKeyItem | null; error: string | null }> => {
+    if (!user) return { data: null, error: 'Not authenticated' };
+
+    // Generate random anc_live_ key string
+    const randomBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    const newKeyValue = `anc_live_${randomBytes}`;
+
+    if (isConfigured) {
+      // Try inserting with key_name first
+      let { data, error } = await supabase
+        .from('api_keys')
+        .insert({
+          user_id: user.id,
+          key_name: keyName || 'API Secret',
+          key_value: newKeyValue,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      // If key_name column is missing in schema cache, try inserting with 'name' column
+      if (error && (error.message.includes('key_name') || error.message.includes('schema cache'))) {
+        const fallback = await supabase
+          .from('api_keys')
+          .insert({
+            user_id: user.id,
+            name: keyName || 'API Secret',
+            key_value: newKeyValue,
+            status: 'active'
+          })
+          .select()
+          .single();
+        
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error) return { data: null, error: error.message };
+
+      const item: ApiKeyItem = {
+        id: data.id,
+        userId: data.user_id,
+        keyName: data.key_name || data.name || keyName || 'API Secret',
+        keyValue: data.key_value || data.key || newKeyValue,
+        status: data.status || 'active',
+        createdAt: data.created_at || new Date().toISOString(),
+        lastUsedAt: data.last_used_at,
+      };
+
+      return { data: item, error: null };
+    } else {
+      // Demo mode insertion
+      const newKey: ApiKeyItem = {
+        id: `demo-key-${Date.now()}`,
+        userId: user.id,
+        keyName: keyName || 'API Secret',
+        keyValue: newKeyValue,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        lastUsedAt: null,
+      };
+
+      const existingStr = localStorage.getItem(DEMO_KEYS_STORAGE_KEY);
+      let existingList: ApiKeyItem[] = [];
+      if (existingStr) {
+        try { existingList = JSON.parse(existingStr); } catch {}
+      }
+      existingList.unshift(newKey);
+      localStorage.setItem(DEMO_KEYS_STORAGE_KEY, JSON.stringify(existingList));
+
+      return { data: newKey, error: null };
+    }
+  };
+
+  const toggleApiKeyStatus = async (keyId: string, currentStatus: 'active' | 'disabled'): Promise<{ error: string | null }> => {
+    if (!user) return { error: 'Not authenticated' };
+    const nextStatus = currentStatus === 'active' ? 'disabled' : 'active';
+
+    if (isConfigured) {
+      const { error } = await supabase
+        .from('api_keys')
+        .update({ status: nextStatus })
+        .eq('id', keyId)
+        .eq('user_id', user.id);
+
+      if (error) return { error: error.message };
+      return { error: null };
+    } else {
+      // Demo update
+      const existingStr = localStorage.getItem(DEMO_KEYS_STORAGE_KEY);
+      if (existingStr) {
+        try {
+          const list: ApiKeyItem[] = JSON.parse(existingStr);
+          const updated = list.map(k => k.id === keyId ? { ...k, status: nextStatus } : k);
+          localStorage.setItem(DEMO_KEYS_STORAGE_KEY, JSON.stringify(updated));
+        } catch {}
+      }
+      return { error: null };
+    }
+  };
+
+  const deleteApiKey = async (keyId: string): Promise<{ error: string | null }> => {
+    if (!user) return { error: 'Not authenticated' };
+
+    if (isConfigured) {
+      const { error } = await supabase
+        .from('api_keys')
+        .delete()
+        .eq('id', keyId)
+        .eq('user_id', user.id);
+
+      if (error) return { error: error.message };
+      return { error: null };
+    } else {
+      // Demo delete
+      const existingStr = localStorage.getItem(DEMO_KEYS_STORAGE_KEY);
+      if (existingStr) {
+        try {
+          const list: ApiKeyItem[] = JSON.parse(existingStr);
+          const filtered = list.filter(k => k.id !== keyId);
+          localStorage.setItem(DEMO_KEYS_STORAGE_KEY, JSON.stringify(filtered));
+        } catch {}
+      }
+      return { error: null };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -362,6 +553,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateAccountType,
         exportUserData,
         deleteUserAccount,
+        fetchApiKeys,
+        createApiKey,
+        toggleApiKeyStatus,
+        deleteApiKey,
       }}
     >
       {children}

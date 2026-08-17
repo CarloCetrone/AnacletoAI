@@ -19,6 +19,7 @@
 
 # production
 /build
+/home_mockups/
 
 # misc
 .DS_Store
