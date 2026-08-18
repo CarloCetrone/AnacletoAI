@@ -66,6 +66,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [sponsoringEnterpriseName, setSponsoringEnterpriseName] = useState<string | null>(null);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [sponsoredMembers, setSponsoredMembers] = useState<any[]>([]);
+  const [enterprisePendingInvites, setEnterprisePendingInvites] = useState<any[]>([]);
   const [inviteUsername, setInviteUsername] = useState<string>('');
   const [inviteCreditLimit, setInviteCreditLimit] = useState<number>(100);
   const [isSponsoringUser, setIsSponsoringUser] = useState<boolean>(false);
@@ -145,6 +146,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         if (teamData) {
           setSponsoredMembers(teamData);
         }
+
+        const { data: sentInvites } = await supabase
+          .from('enterprise_invitations')
+          .select('*')
+          .eq('enterprise_id', user.id)
+          .eq('status', 'pending');
+          
+        if (sentInvites) {
+          setEnterprisePendingInvites(sentInvites);
+        } else {
+          setEnterprisePendingInvites([]);
+        }
       }
 
       // 4. Fetch Token Usage Records from Supabase DB
@@ -177,11 +190,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   };
 
   useEffect(() => {
+    let profileSub: any = null;
+    let invitesSub: any = null;
+
     if (user && isConfigured) {
       fetchSupabaseData();
       loadApiKeys();
+
+      profileSub = supabase
+        .channel(`profile-changes-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+          () => fetchSupabaseData()
+        )
+        .subscribe();
+        
+      if (profile?.accountType === 'enterprise') {
+        invitesSub = supabase
+          .channel(`invites-changes-${user.id}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'enterprise_invitations', filter: `enterprise_id=eq.${user.id}` },
+            () => fetchSupabaseData()
+          )
+          .subscribe();
+      } else {
+        const usernameFilter = profile?.username ? `username=eq.${profile.username}` : '';
+        if (usernameFilter) {
+          invitesSub = supabase
+            .channel(`invites-changes-user-${user.id}`)
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'enterprise_invitations', filter: usernameFilter },
+              () => fetchSupabaseData()
+            )
+            .subscribe();
+        }
+      }
     }
-  }, [user, isConfigured, profile?.accountType]);
+
+    return () => {
+      if (profileSub) supabase.removeChannel(profileSub);
+      if (invitesSub) supabase.removeChannel(invitesSub);
+    };
+  }, [user, isConfigured, profile?.accountType, profile?.username]);
 
   // Handle Accept Enterprise Invitation
   const handleAcceptInvitation = async (inv: any) => {
@@ -249,6 +302,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         .select()
         .single();
 
+      if (invData) {
+        setEnterprisePendingInvites(prev => [invData, ...prev]);
+      }
       setInviteUsername('');
       alert(`Sent enterprise sponsorship invitation to '@${inviteUsername.trim()}' with $${inviteCreditLimit} credit limit!`);
     } catch (err: any) {
@@ -262,6 +318,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     if (!confirm('Are you sure you want to remove enterprise sponsorship for this member?')) return;
     setSponsoredMembers(prev => prev.filter(m => m.id !== memberId));
     await supabase.from('profiles').update({ enterprise_id: null, credit_limit: 0 }).eq('id', memberId);
+  };
+
+  const handleCancelInvite = async (invId: string) => {
+    if (!confirm('Are you sure you want to cancel this pending invitation?')) return;
+    setEnterprisePendingInvites(prev => prev.filter(i => i.id !== invId));
+    await supabase.from('enterprise_invitations').delete().eq('id', invId);
   };
 
   const handleConfirmTopUp = async () => {
@@ -936,14 +998,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#252525]">
-                  {sponsoredMembers.length === 0 ? (
+                  {sponsoredMembers.length === 0 && enterprisePendingInvites.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-4 text-center text-[#666666]">
                         No sponsored team members yet. Enter a user email above to sponsor their compute usage.
                       </td>
                     </tr>
                   ) : (
-                    sponsoredMembers.map((m) => (
+                    <>
+                      {sponsoredMembers.map((m) => (
                       <tr key={m.id} className="hover:bg-[#252525]/40 transition-colors">
                         <td className="p-3">
                           <p className="font-semibold text-white">@{m.username || 'username'}</p>
@@ -966,9 +1029,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                           </button>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    ))}
+                    {enterprisePendingInvites.map((inv) => (
+                      <tr key={inv.id} className="hover:bg-[#252525]/40 transition-colors opacity-70">
+                        <td className="p-3">
+                          <p className="font-semibold text-white">@{inv.username}</p>
+                          <p className="text-[10px] font-mono text-[#666666]">Pending Invite ID: {inv.id ? inv.id.substring(0, 8) + '...' : ''}</p>
+                        </td>
+                        <td className="p-3 uppercase font-mono text-[#FFD54F]">N/A</td>
+                        <td className="p-3 font-mono font-bold text-white">${Number(inv.credit_limit || 100).toFixed(2)}</td>
+                        <td className="p-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Pending
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() => handleCancelInvite(inv.id)}
+                            className="p-1.5 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                            title="Cancel Invitation"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </tbody>
               </table>
             </div>
           </div>
