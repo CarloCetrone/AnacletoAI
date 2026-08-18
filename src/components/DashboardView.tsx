@@ -119,7 +119,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       // 2. Fetch Pending Enterprise Invitations for current user
       const userIdentifier = profileData?.username || profile?.username;
-      if (userIdentifier) {
+      if (userIdentifier && !profileData?.enterprise_id) {
         const { data: invData } = await supabase
           .from('enterprise_invitations')
           .select('*')
@@ -131,6 +131,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         } else {
           setPendingInvitations([]);
         }
+      } else {
+        setPendingInvitations([]);
       }
 
       // 3. If current user is an Enterprise Admin, fetch sponsored members
@@ -246,28 +248,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         })
         .select()
         .single();
-
-      // Check if target profile exists by username
-      const { data: targetUser } = await supabase
-        .from('profiles')
-        .select('id, username, account_type, credit_balance, credit_limit')
-        .eq('username', inviteUsername.trim())
-        .maybeSingle();
-
-      if (targetUser) {
-        await supabase
-          .from('profiles')
-          .update({
-            enterprise_id: user?.id,
-            credit_limit: inviteCreditLimit
-          })
-          .eq('id', targetUser.id);
-
-        setSponsoredMembers(prev => [
-          ...prev.filter(m => m.id !== targetUser.id),
-          { ...targetUser, enterprise_id: user?.id, credit_limit: inviteCreditLimit }
-        ]);
-      }
 
       setInviteUsername('');
       alert(`Sent enterprise sponsorship invitation to '@${inviteUsername.trim()}' with $${inviteCreditLimit} credit limit!`);
@@ -459,7 +439,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     document.body.removeChild(link);
   };
 
-  const isSponsored = Boolean(profile?.enterpriseId || sponsoringEnterpriseName);
+  const isSponsored = Boolean(sponsoringEnterpriseName);
   const sponsoredRemaining = isSponsored ? Math.max(0, creditLimit - totals.totalCost) : 0;
 
   return (

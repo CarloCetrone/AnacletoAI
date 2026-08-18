@@ -133,7 +133,17 @@ serve(async (req) => {
 
     // Parse incoming request payload
     const body = await req.json();
-    const { messages, stream = false, temperature = 0.7, max_tokens = 1024, model = "Anacleto Medium" } = body;
+    const { 
+      messages, 
+      stream = false, 
+      temperature = 0.7, 
+      max_tokens = 1024, 
+      model = "Anacleto Medium",
+      tools,
+      tool_choice,
+      enable_thinking = false,
+      reasoning_budget = 0
+    } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -150,6 +160,20 @@ serve(async (req) => {
 
     const isStreaming = Boolean(stream);
 
+    // Build the dynamic payload
+    const nvidiaPayload: any = {
+      model: MODEL_NAME,
+      messages: messages,
+      temperature: temperature,
+      max_tokens: max_tokens,
+      stream: isStreaming,
+      chat_template_kwargs: { "enable_thinking": Boolean(enable_thinking) },
+      reasoning_budget: Number(reasoning_budget) || 0
+    };
+
+    if (tools) nvidiaPayload.tools = tools;
+    if (tool_choice) nvidiaPayload.tool_choice = tool_choice;
+
     // Call NVIDIA API directly with raw stream forwarding for true 0-latency streaming
     const nvidiaResponse = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -158,15 +182,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         "Accept": isStreaming ? "text/event-stream" : "application/json",
       },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages: messages,
-        temperature: temperature,
-        max_tokens: max_tokens,
-        stream: isStreaming,
-        chat_template_kwargs: { "enable_thinking": false },
-        reasoning_budget: 0
-      }),
+      body: JSON.stringify(nvidiaPayload),
     });
 
     if (!nvidiaResponse.ok) {
@@ -194,38 +210,66 @@ serve(async (req) => {
     const outRate = isLargeModel ? 10.00 : isSmallModel ? 0.60 : 2.80;
     const computedCost = (estInput * inRate + estOutput * outRate) / 1000000;
 
-    // 1. Insert directly into public.token_usage
-    if (userId) {
-      adminSupabase.from("token_usage").insert({
-        user_id: userId,
-        model_name: formattedModelName,
-        input_tokens: estInput,
-        output_tokens: estOutput,
-        enterprise_id: enterpriseId
-      }).then();
-
-      // 2. Deduct cost directly from public.profiles credit_balance in Supabase DB
-      const targetBilledUserId = enterpriseId || userId;
-      adminSupabase
-        .from("profiles")
-        .select("credit_balance")
-        .eq("id", targetBilledUserId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data && data.credit_balance !== null && data.credit_balance !== undefined) {
-            const currentBal = Number(data.credit_balance);
-            const updatedBal = Math.max(0, currentBal - computedCost);
-            adminSupabase
-              .from("profiles")
-              .update({ credit_balance: updatedBal })
-              .eq("id", targetBilledUserId)
-              .then();
-          }
+    const logUsage = async () => {
+      if (!userId) return;
+      try {
+        await adminSupabase.from("token_usage").insert({
+          user_id: userId,
+          model_name: formattedModelName,
+          input_tokens: estInput,
+          output_tokens: estOutput,
+          enterprise_id: enterpriseId
         });
-    }
+
+        const targetBilledUserId = enterpriseId || userId;
+        const { data } = await adminSupabase
+          .from("profiles")
+          .select("credit_balance")
+          .eq("id", targetBilledUserId)
+          .maybeSingle();
+
+        if (data && data.credit_balance !== null && data.credit_balance !== undefined) {
+          const currentBal = Number(data.credit_balance);
+          const updatedBal = Math.max(0, currentBal - computedCost);
+          await adminSupabase
+            .from("profiles")
+            .update({ credit_balance: updatedBal })
+            .eq("id", targetBilledUserId);
+        }
+      } catch (err) {
+        console.error("Error logging usage:", err);
+      }
+    };
 
     if (isStreaming) {
-      return new Response(nvidiaResponse.body, {
+      const stream = new ReadableStream({
+        async start(controller) {
+          if (!nvidiaResponse.body) {
+            controller.close();
+            return;
+          }
+          const reader = nvidiaResponse.body.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
+            }
+          } catch (e) {
+            console.error("Streaming error:", e);
+            controller.error(e);
+          } finally {
+            // Await DB updates before closing the stream controller 
+            // to ensure the edge function isolate doesn't terminate prematurely
+            await logUsage();
+            
+            controller.close();
+            reader.releaseLock();
+          }
+        }
+      });
+
+      return new Response(stream, {
         status: 200,
         headers: {
           ...corsHeaders,
@@ -237,6 +281,10 @@ serve(async (req) => {
       });
     } else {
       const responseData = await nvidiaResponse.json();
+      
+      // Update database before returning response
+      await logUsage();
+
       return new Response(JSON.stringify(responseData), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

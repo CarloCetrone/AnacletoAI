@@ -37,18 +37,15 @@ export const ApiPlaygroundView: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('anacleto-medium');
   const [prompt, setPrompt] = useState<string>('Analyze section 4.2 of contract for data compliance risks under the EU AI Act.');
   const [activeLang, setActiveLang] = useState<'python' | 'curl' | 'node' | 'go'>('python');
-  const [useCustomDomain, setUseCustomDomain] = useState<boolean>(true);
   const [copied, setCopied] = useState(false);
   const [apiOutput, setApiOutput] = useState<string>('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionError, setExecutionError] = useState<string>('');
   const [executionStatus, setExecutionStatus] = useState<number | null>(null);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zzlptwfqqnjhxtvmebqb.supabase.co';
-  const directEdgeUrl = `${supabaseUrl}/functions/v1/api_calls`;
   const customDomainUrl = 'https://api.anacletoai.com/v1';
 
-  const activeBaseUrl = useCustomDomain ? customDomainUrl : directEdgeUrl;
+  const activeBaseUrl = customDomainUrl;
 
   const loadKeys = async () => {
     setLoadingKeys(true);
@@ -116,6 +113,24 @@ client = openai.OpenAI(
     api_key="${activeKeyValue}"
 )
 
+# Example tool definition
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_contract_database",
+            "description": "Searches the internal contract database for specific clauses.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The legal clause or topic to search for"}
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
 response = client.chat.completions.create(
     model="${selectedModel}",
     messages=[
@@ -123,15 +138,49 @@ response = client.chat.completions.create(
         {"role": "user", "content": "${prompt.replace(/"/g, '\\"')}"}
     ],
     temperature=0.7,
-    stream=True
+    stream=True,
+    
+    # 1. Enable Tool Calling (Standard OpenAI params)
+    tools=tools,               
+    tool_choice="auto",        
+    
+    # 2. Enable Reasoning (Custom Anacleto AI params)
+    extra_body={               
+        "enable_thinking": True,
+        "reasoning_budget": 512
+    }
 )
 
 for chunk in response:
     if chunk.choices and len(chunk.choices) > 0:
-        content = chunk.choices[0].delta.content
-        if content:
-            sys.stdout.write(content)
-            sys.stdout.flush()`,
+        delta = chunk.choices[0].delta
+        
+        # 1. Handle Reasoning Output
+        # The OpenAI Python SDK stores custom non-standard fields in \`model_extra\`
+        reasoning = getattr(delta, "reasoning_content", None)
+        if not reasoning and hasattr(delta, "model_extra") and delta.model_extra:
+            reasoning = delta.model_extra.get("reasoning_content")
+            
+        if reasoning:
+            # Print reasoning in grey
+            sys.stdout.write(f"\\033[90m{reasoning}\\033[0m")
+            sys.stdout.flush()
+
+        # 2. Handle Normal Text Content
+        if delta.content:
+            sys.stdout.write(delta.content)
+            sys.stdout.flush()
+            
+        # 3. Handle Tool Calls Streaming
+        if delta.tool_calls:
+            for tool_call in delta.tool_calls:
+                # Print the tool name when the model decides to use it
+                if tool_call.function.name:
+                    sys.stdout.write(f"\\n[Using Tool: {tool_call.function.name}] ")
+                # Print the JSON arguments as they stream in
+                if tool_call.function.arguments:
+                    sys.stdout.write(tool_call.function.arguments)
+                sys.stdout.flush()`,
 
     curl: `curl -X POST "${activeBaseUrl}/chat/completions" \\
   -H "Content-Type: application/json" \\
@@ -143,7 +192,26 @@ for chunk in response:
       {"role": "user", "content": "${prompt.replace(/"/g, '\\"')}"}
     ],
     "temperature": 0.7,
-    "stream": true
+    "stream": true,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search_contract_database",
+          "description": "Searches the internal contract database for specific clauses.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {"type": "string", "description": "The legal clause or topic to search for"}
+            },
+            "required": ["query"]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "enable_thinking": true,
+    "reasoning_budget": 512
   }'`,
 
     node: `import OpenAI from 'openai';
@@ -156,12 +224,61 @@ const openai = new OpenAI({
 async function main() {
   const stream = await openai.chat.completions.create({
     model: '${selectedModel}',
-    messages: [{ role: 'user', content: '${prompt.replace(/'/g, "\\'")}' }],
+    messages: [
+      { role: 'system', content: 'You are Anacleto AI, a sovereign enterprise model.' },
+      { role: 'user', content: '${prompt.replace(/'/g, "\\'")}' }
+    ],
     stream: true,
+    temperature: 0.7,
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "search_contract_database",
+          description: "Searches the internal contract database for specific clauses.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "The legal clause or topic to search for" }
+            },
+            required: ["query"]
+          }
+        }
+      }
+    ],
+    tool_choice: "auto",
+    // 2. Enable Reasoning
+    // @ts-ignore
+    enable_thinking: true,
+    reasoning_budget: 512
   });
 
   for await (const chunk of stream) {
-    process.stdout.write(chunk.choices[0]?.delta?.content || '');
+    const delta = chunk.choices[0]?.delta;
+    if (!delta) continue;
+
+    // 1. Handle Reasoning Output
+    const reasoning = (delta as any).reasoning_content || (chunk as any).reasoning_content;
+    if (reasoning) {
+      process.stdout.write(\`\\x1b[90m\${reasoning}\\x1b[0m\`); // Grey text
+    }
+
+    // 2. Handle Normal Text
+    if (delta.content) {
+      process.stdout.write(delta.content);
+    }
+
+    // 3. Handle Tool Calls
+    if (delta.tool_calls) {
+      for (const toolCall of delta.tool_calls) {
+        if (toolCall.function?.name) {
+          process.stdout.write(\`\\n[Using Tool: \${toolCall.function.name}] \`);
+        }
+        if (toolCall.function?.arguments) {
+          process.stdout.write(toolCall.function.arguments);
+        }
+      }
+    }
   }
 }
 
@@ -186,12 +303,34 @@ func main() {
 		openai.ChatCompletionRequest{
 			Model: "${selectedModel}",
 			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: "You are Anacleto AI, a sovereign enterprise model."},
 				{Role: openai.ChatMessageRoleUser, Content: "${prompt.replace(/"/g, '\\"')}"},
 			},
 			Stream: true,
+			Temperature: 0.7,
+			Tools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "search_contract_database",
+						Description: "Searches the internal contract database for specific clauses.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"query": map[string]interface{}{
+									"type":        "string",
+									"description": "The legal clause or topic to search for",
+								},
+							},
+							"required": []string{"query"},
+						},
+					},
+				},
+			},
 		},
 	)
 	if err != nil {
+		fmt.Printf("Stream error: %v\\n", err)
 		return
 	}
 	defer stream.Close()
@@ -201,7 +340,30 @@ func main() {
 		if err == io.EOF {
 			return
 		}
-		fmt.Print(response.Choices[0].Delta.Content)
+		if err != nil {
+			return
+		}
+		
+		if len(response.Choices) > 0 {
+			delta := response.Choices[0].Delta
+			
+			// 1. Handle Normal Text
+			if delta.Content != "" {
+				fmt.Print(delta.Content)
+			}
+			
+			// 2. Handle Tool Calls
+			if len(delta.ToolCalls) > 0 {
+				for _, tc := range delta.ToolCalls {
+					if tc.Function.Name != "" {
+						fmt.Printf("\\n[Using Tool: %s] ", tc.Function.Name)
+					}
+					if tc.Function.Arguments != "" {
+						fmt.Print(tc.Function.Arguments)
+					}
+				}
+			}
+		}
 	}
 }`
   };
@@ -221,7 +383,7 @@ func main() {
     setExecutionStatus(null);
 
     try {
-      const response = await fetch(directEdgeUrl, {
+      const response = await fetch(activeBaseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -467,33 +629,6 @@ func main() {
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? 'Copied!' : 'Copy Code'}
               </button>
-            </div>
-
-            {/* Base URL Domain Selector */}
-            <div className="mb-4 p-3 rounded-xl bg-[#121212] border border-[#333333]">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase text-[#BDBDBD] flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-[#FFD54F]" /> Base URL Routing
-                </span>
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    onClick={() => setUseCustomDomain(true)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold uppercase transition-all ${
-                      useCustomDomain ? 'bg-[#FFD54F] text-black' : 'text-[#666666] hover:text-white'
-                    }`}
-                  >
-                    Custom Domain
-                  </button>
-                  <button
-                    onClick={() => setUseCustomDomain(false)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold uppercase transition-all ${
-                      !useCustomDomain ? 'bg-[#FFD54F] text-black' : 'text-[#666666] hover:text-white'
-                    }`}
-                  >
-                    Direct Edge
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Active Key Selector for Snippet */}
