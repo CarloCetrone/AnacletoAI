@@ -242,22 +242,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     setPendingInvitations(prev => prev.filter(i => i.id !== inv.id));
 
     try {
-      // 2. Update invitation status in Supabase DB
-      await supabase
-        .from('enterprise_invitations')
-        .update({ status: 'accepted' })
-        .eq('id', inv.id);
+      // 2. Call the secure RPC to accept the invitation
+      const { error } = await supabase.rpc('accept_enterprise_invitation', {
+        inv_id: inv.id
+      });
 
-      // 3. Link user's profile to enterprise_id & assigned credit_limit
-      if (user?.id) {
-        await supabase
-          .from('profiles')
-          .update({
-            enterprise_id: inv.enterprise_id,
-            credit_limit: inv.credit_limit
-          })
-          .eq('id', user.id);
-      }
+      if (error) throw error;
 
       setCreditLimit(Number(inv.credit_limit));
       setSponsoringEnterpriseName(inv.enterprise_name || 'Enterprise Partner');
@@ -265,6 +255,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       fetchSupabaseData();
     } catch (err) {
       console.error("Accept invite err:", err);
+      // Revert optimistic UI removal if it failed
+      setPendingInvitations(prev => [...prev, inv]);
+      alert("Failed to accept invitation. It may have been canceled or an error occurred.");
     }
   };
 
@@ -316,8 +309,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   const handleRemoveSponsorship = async (memberId: string) => {
     if (!confirm('Are you sure you want to remove enterprise sponsorship for this member?')) return;
+    
+    // Optimistic UI update
+    const removedMember = sponsoredMembers.find(m => m.id === memberId);
     setSponsoredMembers(prev => prev.filter(m => m.id !== memberId));
-    await supabase.from('profiles').update({ enterprise_id: null, credit_limit: 0 }).eq('id', memberId);
+    
+    try {
+      const { error } = await supabase.rpc('remove_enterprise_member', {
+        member_id: memberId
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error("Remove sponsorship err:", err);
+      if (removedMember) setSponsoredMembers(prev => [...prev, removedMember]);
+      alert("Failed to remove member. Please try again.");
+    }
   };
 
   const handleCancelInvite = async (invId: string) => {
