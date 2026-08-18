@@ -254,10 +254,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       alert(`Accepted Enterprise Invitation! You now have a sponsored compute credit limit of $${inv.credit_limit}.`);
       fetchSupabaseData();
     } catch (err) {
-      console.error("Accept invite err:", err);
+      console.error("Accept invite err:", err?.message || JSON.stringify(err) || err);
       // Revert optimistic UI removal if it failed
       setPendingInvitations(prev => [...prev, inv]);
-      alert("Failed to accept invitation. It may have been canceled or an error occurred.");
+      alert(`Failed to accept invitation. Reason: ${err?.message || JSON.stringify(err) || 'Unknown error'}`);
     }
   };
 

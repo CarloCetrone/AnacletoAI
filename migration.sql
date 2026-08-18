@@ -35,6 +35,9 @@ BEGIN
   SET status = 'accepted' 
   WHERE id = inv_id;
 
+  -- Bypass the client restriction trigger for this transaction
+  PERFORM set_config('app.bypass_profile_trigger', 'true', true);
+
   -- Securely link the user to the enterprise and assign credit limit
   UPDATE public.profiles 
   SET enterprise_id = v_invitation.enterprise_id,
@@ -64,6 +67,9 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'User is not a sponsored member of this enterprise';
   END IF;
+
+  -- Bypass the client restriction trigger for this transaction
+  PERFORM set_config('app.bypass_profile_trigger', 'true', true);
 
   -- Securely sever the link and reset credit limit
   UPDATE public.profiles 
@@ -124,7 +130,12 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  -- If the update is coming from an authenticated client (not service_role or SECURITY DEFINER RPC)
+  -- Allow updates if they come from our secure RPCs
+  IF current_setting('app.bypass_profile_trigger', true) = 'true' THEN
+    RETURN NEW;
+  END IF;
+
+  -- If the update is coming from an authenticated client directly
   IF auth.uid() IS NOT NULL THEN
     -- Block tampering with enterprise data
     IF NEW.enterprise_id IS DISTINCT FROM OLD.enterprise_id OR NEW.credit_limit IS DISTINCT FROM OLD.credit_limit THEN
