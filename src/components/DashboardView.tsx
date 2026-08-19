@@ -253,7 +253,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       setSponsoringEnterpriseName(inv.enterprise_name || 'Enterprise Partner');
       alert(`Accepted Enterprise Invitation! You now have a sponsored compute credit limit of $${inv.credit_limit}.`);
       fetchSupabaseData();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Accept invite err:", err?.message || JSON.stringify(err) || err);
       // Revert optimistic UI removal if it failed
       setPendingInvitations(prev => [...prev, inv]);
