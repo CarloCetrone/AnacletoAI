@@ -84,7 +84,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "web_search",
-      description: "Execute a web search to find real-time, up-to-date information, news, or technical documentation. ALWAYS use this tool when asked about current events, specific facts, or recently released technologies.",
+      description: "Execute a web search to find real-time, up-to-date information, news, or technical documentation. ALWAYS use this tool when asked about current events, specific facts, or recently released technologies. DO NOT guess facts if you can search.",
       parameters: {
         type: "object",
         properties: { query: { type: "string", description: "The highly optimized search query string. Keep it concise and keyword-focused." } },
@@ -96,7 +96,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_image",
-      description: "Generate a high-quality image using the Flux model. Use this tool ONLY when the user explicitly requests an image, drawing, or visual representation. NEVER output base64 strings or markdown image links in your text response. The client UI will display it automatically.",
+      description: "Generate a high-quality image using the Flux model. Use this tool ONLY when the user explicitly requests an image, drawing, photo, or visual representation. NEVER output base64 strings or markdown image links in your text response. The client UI will display it automatically. Just inform the user the image was generated.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "A highly detailed, descriptive prompt for the image generator. Include artistic style, lighting, framing, and specific visual elements." } },
@@ -108,7 +108,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_3d_model",
-      description: "Generate a 3D model asset (GLB/GLTF) based on a text description. Use this when the user asks for a 3D object, model, or CAD asset. NEVER output base64 strings or download links in your text response. The client UI will display it automatically.",
+      description: "Generate a 3D model asset (GLB/GLTF) based on a text description. Use this ONLY when the user asks for a 3D object, model, or CAD asset. NEVER output base64 strings or download links in your text response. The client UI will display it automatically.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "A clear, concise description of the 3D object to generate." } },
@@ -120,7 +120,7 @@ const chatTools: any[] = [
     type: "function",
     function: {
       name: "generate_latex",
-      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. The client will automatically compile this string into a PDF. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document. Do NOT use undefined control sequences like \\semicolon. Stick to standard, widely supported LaTeX packages and commands. Keep it simple enough to compile safely. NEVER output base64 strings or markdown download links in your text response. The client UI will display it automatically.",
+      description: "Generate raw LaTeX code for a beautifully formatted PDF document or a Beamer slideshow. ALWAYS use this tool when the user asks for a PDF, presentation, slideshow, or LaTeX document. Do NOT use undefined control sequences. Stick to standard LaTeX packages. NEVER use \\includegraphics or load external images that don't exist. Ensure all math blocks and environments are valid and closed. For Beamer, ALWAYS use \\begin{frame}{Title} and NEVER \\begin{frame{Title}. Keep it simple enough to compile safely.",
       parameters: {
         type: "object",
         properties: { 
@@ -128,6 +128,22 @@ const chatTools: any[] = [
           is_slideshow: { type: "boolean", description: "Set to true if the user requested a slideshow or presentation (Beamer), false otherwise." }
         },
         required: ["latex_code", "is_slideshow"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_artifact",
+      description: "Generate a standalone interactive artifact. Use this tool when the user asks you to write code, create an HTML page, build a UI component, draw an SVG, or write a long markdown document. The client will render this artifact in a dedicated canvas next to the chat. NEVER write long blocks of code directly in your chat response; ALWAYS use this tool instead.",
+      parameters: {
+        type: "object",
+        properties: { 
+          title: { type: "string", description: "A short, descriptive title for the artifact." },
+          type: { type: "string", enum: ["code", "html", "svg", "markdown"], description: "The type of artifact being generated." },
+          content: { type: "string", description: "The raw content of the artifact (e.g., the raw HTML code, raw SVG code, etc.). Do not wrap in markdown code blocks." }
+        },
+        required: ["title", "type", "content"]
       }
     }
   }
@@ -171,22 +187,24 @@ serve(async (req) => {
 
     const currentMessages: any[] = [];
     
-    let baseSystemPrompt = `You are Anacleto AI, an elite multimodal assistant and orchestrator.
-Your primary goal is to provide deeply intelligent, formatting-rich, and context-aware responses.
+    let baseSystemPrompt = `You are Anacleto AI, an elite multimodal assistant and orchestrator engineered for enterprise leaders.
+Your persona is "Sovereign Executive AI": highly professional, concise, intelligent, and refined. You do not use overly enthusiastic language; you communicate with quiet confidence and extreme competence.
 
 CRITICAL INSTRUCTIONS:
-1. ALWAYS format your text outputs using Markdown. Use tables, bolding, italics, and code blocks aggressively to make your responses readable and beautiful.
-2. If the user asks for a specific format (e.g., PDF, Slides, Image, 3D Model), you MUST use the corresponding tool. Do NOT just write the code out as text if a tool is available.
-3. Keep your direct text responses highly professional, concise, and focused on the user's intent.
-4. IMPORTANT IDENTITY: You are Anacleto AI, a proprietary model created by Carlo Cetrone. You are NOT Nemotron, you are NOT created by NVIDIA. If asked who you are or what your underlying model is, you MUST state that you are Anacleto AI. Never mention Nemotron or NVIDIA.
-5. Do NOT attempt to provide markdown download links or hallucinate base64 strings in your response when generating files. The client UI will automatically display the generated files (Images, 3D Models, PDFs).`;
+1. ALWAYS format your text outputs using Markdown. Use tables, bolding, italics, and short bullet points to make your responses highly scannable and beautiful.
+2. If the user asks for a specific format (e.g., PDF, Slides, Image, 3D Model, or Code/HTML), you MUST use the corresponding tool. Do NOT just write the code out as text in your response if a tool is available.
+3. Keep your direct text responses highly concise and focused on the user's intent. Do not yap. State the facts clearly.
+4. IMPORTANT IDENTITY: You are Anacleto AI, a proprietary sovereign foundation model. You are NOT Nemotron, you are NOT created by NVIDIA. If asked who you are or what your underlying model is, you MUST state that you are Anacleto AI. Never mention Nemotron or NVIDIA.
+5. NEVER attempt to provide markdown download links or hallucinate base64 strings in your response when generating files. The client UI will automatically display the generated files and tools. Just inform the user you have completed the action.
+6. When generating LaTeX, the backend will auto-compile it. If it fails, you will receive an error. You must fix it without adding images or complex unmet dependencies.
+7. When writing markdown tables that contain math with vertical pipes (like $|\\psi\\rangle$), you MUST escape the pipes as \\| or the table will break.`;
 
-    if (webSearch) baseSystemPrompt += "\n- You are connected to the live internet via the 'web_search' tool. ALWAYS verify unknown facts or current events.";
-    if (imageGen) baseSystemPrompt += "\n- You have the 'generate_image' tool. Use it to create rich visuals upon request.";
-    if (model3D) baseSystemPrompt += "\n- You have the 'generate_3d_model' tool to create 3D assets.";
-    if (pdfGen) baseSystemPrompt += "\n- You have the 'generate_latex' tool. Use it (is_slideshow=false) to generate and compile PDF documents.";
-    if (slideshowGen) baseSystemPrompt += "\n- You have the 'generate_latex' tool. Use it (is_slideshow=true) to generate Beamer presentations.";
-    if (deepReasoning) baseSystemPrompt += "\n- Deep Reasoning is ENABLED. Take your time to think thoroughly before arriving at your final output.";
+    if (webSearch) baseSystemPrompt += "\n- Web Search: ENABLED. ALWAYS verify unknown facts or current events using your 'web_search' tool.";
+    if (imageGen) baseSystemPrompt += "\n- Image Generation: ENABLED. Use the 'generate_image' tool to create rich visuals upon request.";
+    if (model3D) baseSystemPrompt += "\n- 3D Generation: ENABLED. Use the 'generate_3d_model' tool to create 3D assets.";
+    if (pdfGen) baseSystemPrompt += "\n- PDF Generation: ENABLED. Use the 'generate_latex' tool (is_slideshow=false) to generate and compile PDF documents.";
+    if (slideshowGen) baseSystemPrompt += "\n- Slideshow Generation: ENABLED. Use the 'generate_latex' tool (is_slideshow=true) to generate Beamer presentations.";
+    if (deepReasoning) baseSystemPrompt += "\n- Deep Reasoning: ENABLED. Take your time to think thoroughly before arriving at your final output.";
     
     currentMessages.push({ role: "system", content: baseSystemPrompt });
 
@@ -217,6 +235,7 @@ CRITICAL INSTRUCTIONS:
           let finalInputTokens = 0;
           let finalOutputTokens = 0;
           let usedTools = new Set<string>();
+          let latexRetries = 0;
           
           while (!runComplete) {
             const activeTools = chatTools.filter(t => {
@@ -225,6 +244,7 @@ CRITICAL INSTRUCTIONS:
               if (t.function.name === "generate_image" && imageGen) return true;
               if (t.function.name === "generate_3d_model" && model3D) return true;
               if (t.function.name === "generate_latex" && (pdfGen || slideshowGen)) return true;
+              if (t.function.name === "generate_artifact") return true;
               return false;
             });
 
@@ -306,6 +326,7 @@ CRITICAL INSTRUCTIONS:
                    args = {};
                 }
                 let toolResultStr = "";
+                let shouldAddUsedTool = true;
 
                 sendEvent("tool_start", { name: toolCall.function.name, args });
 
@@ -325,8 +346,39 @@ CRITICAL INSTRUCTIONS:
                   sendEvent("model_3d_generated", { result: b64 || res });
                   toolResultStr = "3D model successfully generated and displayed to the user.";
                 } else if (toolCall.function.name === "generate_latex") {
-                  toolResultStr = "LaTeX generated successfully. It will be compiled by the client.";
-                  sendEvent("latex_generated", { code: args.latex_code, isSlideshow: args.is_slideshow });
+                  let compilationFailed = false;
+                  let compilationError = "";
+                  try {
+                    const compileRes = await fetch("https://latexonline.cc/compile?text=" + encodeURIComponent(args.latex_code) + "&force=true", {
+                      method: "GET"
+                    });
+                    if (compileRes.status !== 200) {
+                      compilationFailed = true;
+                      compilationError = await compileRes.text();
+                    } else {
+                      const contentType = compileRes.headers.get("content-type");
+                      if (!contentType || !contentType.includes("application/pdf")) {
+                         compilationFailed = true;
+                         compilationError = "Did not receive a valid PDF. Log: " + await compileRes.text();
+                      }
+                    }
+                  } catch (err) {
+                     compilationFailed = true;
+                     compilationError = String(err);
+                  }
+                  if (compilationFailed && latexRetries < 2) {
+                     latexRetries++;
+                     toolResultStr = `COMPILATION FAILED. You MUST fix these errors and try again (do NOT use \\includegraphics):\n\n${compilationError.substring(0, 1500)}`;
+                     shouldAddUsedTool = false;
+                  } else {
+                     toolResultStr = compilationFailed 
+                       ? `Compilation failed after max retries: ${compilationError.substring(0, 500)}.`
+                       : "LaTeX generated and compiled successfully.";
+                     sendEvent("latex_generated", { code: args.latex_code, isSlideshow: args.is_slideshow });
+                  }
+                } else if (toolCall.function.name === "generate_artifact") {
+                  toolResultStr = "Artifact generated successfully. It will be displayed in the canvas.";
+                  sendEvent("artifact_generated", { title: args.title, type: args.type, content: args.content });
                 }
 
                 currentMessages.push({
@@ -337,7 +389,7 @@ CRITICAL INSTRUCTIONS:
                 });
                 
                 sendEvent("tool_end", { name: toolCall.function.name });
-                usedTools.add(toolCall.function.name);
+                if (shouldAddUsedTool) usedTools.add(toolCall.function.name);
               }
             } else {
               runComplete = true;

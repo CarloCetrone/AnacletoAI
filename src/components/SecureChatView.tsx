@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ArtifactCanvas } from '@/components/ArtifactCanvas';
 import { useAuth } from '@/context/AuthContext';
@@ -21,6 +24,12 @@ const ModelViewer = dynamic(() => import('@google/model-viewer').then(() => {
 
 const SUPABASE_FUNCTION_URL = 'https://zzlptwfqqnjhxtvmebqb.supabase.co/functions/v1/chat';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_8eu0QBwgFKoECWdlqf4DvQ_mtmVsixc';
+
+interface ArtifactData {
+  title: string;
+  type: 'code' | 'html' | 'svg' | 'markdown';
+  content: string;
+}
 
 interface ChatMessage {
   id: string;
@@ -39,6 +48,7 @@ interface ChatMessage {
   latexBlocks?: { code: string, isSlideshow: boolean }[];
   executedTools?: { name: string, args: any, status: 'loading' | 'done' | 'error' }[];
   thoughts?: string;
+  artifacts?: ArtifactData[];
 }
 
 interface ChatSession {
@@ -46,12 +56,6 @@ interface ChatSession {
   title: string;
   messages: ChatMessage[];
   createdAt: string;
-}
-
-interface ArtifactData {
-  title: string;
-  type: 'code' | 'html' | 'svg' | 'markdown';
-  content: string;
 }
 
 export const SecureChatView: React.FC = () => {
@@ -109,7 +113,8 @@ export const SecureChatView: React.FC = () => {
                   models3D: extra.models3D,
                   latexBlocks: extra.latexBlocks,
                   searchSummary: extra.searchSummary,
-                  sources: extra.sources
+                  sources: extra.sources,
+                  artifacts: extra.artifacts
                 };
               })
             });
@@ -122,7 +127,7 @@ export const SecureChatView: React.FC = () => {
             id: 'session-1',
             title: 'New Conversation',
             createdAt: new Date().toLocaleTimeString(),
-            messages: [{ id: 'welcome-msg', sender: 'ai', text: 'Welcome to Anacleto AI.', timestamp: new Date().toLocaleTimeString(), modelUsed: 'Anacleto-Large' }]
+            messages: []
           }]);
         }
       };
@@ -132,7 +137,7 @@ export const SecureChatView: React.FC = () => {
         id: 'session-1',
         title: 'New Conversation',
         createdAt: new Date().toLocaleTimeString(),
-        messages: [{ id: 'welcome-msg', sender: 'ai', text: 'Welcome to Anacleto AI. Select your Anacleto model from the header and toggle the multimodal tools you need below.', timestamp: new Date().toLocaleTimeString(), modelUsed: 'Anacleto-Large' }]
+        messages: []
       }]);
     }
   }, [isConfigured, session]);
@@ -159,7 +164,9 @@ export const SecureChatView: React.FC = () => {
   const messages = activeSession.messages;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [activeSessionId, messages, loading]);
 
   const copyToClipboard = (text: string, msgId: string) => {
@@ -176,7 +183,6 @@ export const SecureChatView: React.FC = () => {
       
       try {
         if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-          // Dynamically import pdfjs-dist to avoid SSR Iterator errors in Node 20
           const pdfjsLib = await import('pdfjs-dist');
           if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -185,7 +191,7 @@ export const SecureChatView: React.FC = () => {
           const arrayBuffer = await file.arrayBuffer();
           const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
           let fullText = '';
-          for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) { // Limit to 10 pages for speed/tokens
+          for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) { 
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
             const pageText = content.items.map((item: any) => item.str).join(' ');
@@ -303,6 +309,7 @@ export const SecureChatView: React.FC = () => {
       let finalLatexBlocks: any[] = [];
       let finalSearchSummary = '';
       let finalSources: string[] = [];
+      let finalArtifacts: ArtifactData[] = [];
 
       if (reader) {
         while (true) {
@@ -366,6 +373,14 @@ export const SecureChatView: React.FC = () => {
                   setSessions(prev => prev.map(s => s.id === currentSessionId ? {
                     ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, latexBlocks: [...(m.latexBlocks || []), { code: eventData.code, isSlideshow: eventData.isSlideshow }] } : m)
                   } : s));
+                } else if (eventType === 'artifact_generated') {
+                  const newArtifact: ArtifactData = { title: eventData.title, type: eventData.type, content: eventData.content };
+                  finalArtifacts.push(newArtifact);
+                  setActiveArtifact(newArtifact);
+                  setCanvasOpen(true);
+                  setSessions(prev => prev.map(s => s.id === currentSessionId ? {
+                    ...s, messages: s.messages.map(m => m.id === aiMsgId ? { ...m, artifacts: [...(m.artifacts || []), newArtifact] } : m)
+                  } : s));
                 } else if (eventType === 'searchSummary') {
                   finalSearchSummary = eventData.summary;
                   finalSources = eventData.sources || [];
@@ -384,7 +399,8 @@ export const SecureChatView: React.FC = () => {
                        models3D: finalModels3D,
                        latexBlocks: finalLatexBlocks,
                        searchSummary: finalSearchSummary,
-                       sources: finalSources
+                       sources: finalSources,
+                       artifacts: finalArtifacts
                      };
                      supabase.from('chat_messages').insert({
                        session_id: currentSessionId,
@@ -419,7 +435,7 @@ export const SecureChatView: React.FC = () => {
     const newSessionId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newSessionId, title: 'New Conversation', createdAt: new Date().toLocaleTimeString(),
-      messages: [{ id: `welcome-${newSessionId}`, sender: 'ai', text: 'How can I assist you today?', timestamp: new Date().toLocaleTimeString(), modelUsed: selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large' }]
+      messages: []
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSessionId);
@@ -441,50 +457,93 @@ export const SecureChatView: React.FC = () => {
     }
   };
 
+  const renderInputBox = () => (
+    <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-2 sm:p-3 shadow-2xl relative">
+      <div className="flex items-center gap-2 overflow-x-auto mb-2 px-2 pt-1 pb-2 border-b border-zinc-800/50">
+        {[
+          { label: 'Web', state: webSearchEnabled, set: setWebSearchEnabled, icon: Globe },
+          { label: 'Think', state: deepReasoningEnabled, set: setDeepReasoningEnabled, icon: Brain },
+          { label: 'Image', state: imageGenEnabled, set: setImageGenEnabled, icon: ImageIcon },
+          { label: '3D', state: model3DEnabled, set: setModel3DEnabled, icon: Box },
+          { label: 'PDF', state: pdfGenEnabled, set: setPdfGenEnabled, icon: BookOpen },
+          { label: 'Slides', state: slideshowGenEnabled, set: setSlideshowGenEnabled, icon: Layout }
+        ].map(t => (
+          <button
+            key={t.label} type="button" onClick={() => t.set(!t.state)}
+            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap border ${t.state ? 'bg-zinc-800 text-zinc-100 border-zinc-600 shadow-sm' : 'bg-transparent text-zinc-500 border-transparent hover:text-zinc-300'}`}
+          >
+            <t.icon className="w-3.5 h-3.5" /> {t.label}
+          </button>
+        ))}
+      </div>
+      {selectedFile && (
+        <div className="mb-2 mx-2 inline-flex items-center gap-3 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 font-mono">
+          <FileText className="w-3.5 h-3.5" />
+          <span className="max-w-[150px] truncate">{selectedFile.name}</span>
+          {extractedFileText && <span className="text-[10px] text-zinc-500 bg-black/50 px-1.5 py-0.5 rounded">{extractedFileText.length.toLocaleString()} chars</span>}
+          <button onClick={() => { setSelectedFile(null); setExtractedFileText(''); }} className="text-zinc-500 hover:text-red-400 ml-2 transition-colors"><XCircle className="w-4 h-4" /></button>
+        </div>
+      )}
+      <div className="relative flex items-end">
+        <form onSubmit={handleSendMessage} className="relative flex w-full items-end">
+          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 mb-1 ml-1 rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 transition-colors"><Paperclip className="w-5 h-5" /></button>
+          <textarea
+            rows={Math.min(8, Math.max(1, inputMessage.split('\n').length))}
+            value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
+            placeholder="Send a message to Anacleto..."
+            className="w-full px-3 py-4 bg-transparent text-zinc-100 placeholder-zinc-600 text-[15px] focus:outline-none resize-none max-h-[200px]"
+          />
+          <button type={loading ? "button" : "submit"} onClick={() => loading ? abortControllerRef.current?.abort() : undefined} disabled={(!inputMessage.trim() && !selectedFile && !loading)} className={`p-2.5 mb-1.5 mr-1.5 rounded-xl transition-all ${loading ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-200 hover:bg-white disabled:opacity-20 text-black'}`}>
+            {loading ? <XCircle className="w-5 h-5" /> : <Send className="w-5 h-5 ml-0.5" />}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
   const renderMessageContent = (msg: ChatMessage) => {
     const msgId = msg.id;
     let cleanText = msg.text || '';
     const thoughtsText = msg.thoughts || '';
 
-    if (!cleanText && !thoughtsText && !msg.searchSummary && !msg.activeTool && (!msg.executedTools || msg.executedTools.length === 0) && !msg.images && !msg.models3D && !msg.latexBlocks) {
+    if (!cleanText && !thoughtsText && !msg.searchSummary && !msg.activeTool && (!msg.executedTools || msg.executedTools.length === 0) && !msg.images && !msg.models3D && !msg.latexBlocks && !msg.artifacts) {
       return (
-        <div className="flex items-center gap-2 text-xs text-[#BDBDBD] py-1 font-mono">
-          <Loader2 className="w-4 h-4 animate-spin text-[#FFD54F]" />
-          <span>Generating response...</span>
+        <div className="flex items-center gap-3 text-xs text-zinc-400 py-1 font-mono">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="uppercase tracking-wider">Processing...</span>
         </div>
       );
     }
 
-    const rawParts = cleanText.split(/(```[\s\S]*?(?:```|$))/g);
-
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         {msg.activeTool && (
-          <div className="flex items-center gap-2 text-xs text-[#FFD54F] py-1.5 px-3 rounded bg-[#FFD54F]/10 font-mono border border-[#FFD54F]/20 mb-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="uppercase font-semibold tracking-wider">Executing {msg.activeTool.replace('_', ' ')}...</span>
+          <div className="flex items-center gap-3 text-xs text-zinc-300 py-3 px-4 rounded-xl bg-zinc-800/50 font-mono border border-zinc-700 mb-3">
+            <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+            <span className="uppercase font-bold tracking-widest">Executing {msg.activeTool.replace('_', ' ')}...</span>
           </div>
         )}
 
         {msg.executedTools && msg.executedTools.length > 0 && (
-          <div className="rounded-lg bg-[#121212] border border-[#FFD54F]/30 text-xs font-mono overflow-hidden my-2">
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono overflow-hidden my-3 shadow-sm">
             <button
               onClick={() => setOpenSearchId(openSearchId === msgId ? null : msgId)}
-              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#BDBDBD] transition-colors"
+              className="w-full px-4 py-3 bg-zinc-800/50 hover:bg-zinc-800 flex items-center justify-between text-zinc-400 transition-colors"
             >
-              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-[#FFD54F]">
-                <Cpu className="w-3.5 h-3.5" /> Executed Tools ({msg.executedTools.length})
+              <span className="flex items-center gap-2 font-bold uppercase tracking-widest text-[11px] text-zinc-300">
+                <Cpu className="w-4 h-4" /> Executed Tools ({msg.executedTools.length})
               </span>
-              {openSearchId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {openSearchId === msgId ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
             {openSearchId === msgId && (
-              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed flex flex-col gap-2">
+              <div className="p-4 text-zinc-400 bg-[#0b0b0d] border-t border-zinc-800 leading-relaxed flex flex-col gap-3">
                 {msg.executedTools.map((t, idx) => (
-                   <div key={idx} className="flex flex-col gap-1 border-b border-[#333333]/50 pb-2 mb-1 last:border-0 last:mb-0 last:pb-0">
-                      <span className="text-[#FFD54F] font-bold capitalize">{t.name.replace('_', ' ')}</span>
-                      <span className="opacity-70 text-[10px] break-all">{JSON.stringify(t.args)}</span>
-                      {t.status === 'loading' && <span className="flex items-center gap-1 text-blue-400 text-[10px] mt-1"><Loader2 className="w-3 h-3 animate-spin"/> Running...</span>}
-                      {t.status === 'done' && <span className="flex items-center gap-1 text-emerald-400 text-[10px] mt-1"><Check className="w-3 h-3"/> Completed</span>}
+                   <div key={idx} className="flex flex-col gap-1.5 border-b border-zinc-800 pb-3 mb-1 last:border-0 last:mb-0 last:pb-0">
+                      <span className="text-zinc-200 font-bold capitalize tracking-wider">{t.name.replace('_', ' ')}</span>
+                      <span className="opacity-70 text-[10px] break-all bg-black/40 p-2 rounded border border-zinc-800">{JSON.stringify(t.args)}</span>
+                      {t.status === 'loading' && <span className="flex items-center gap-1.5 text-blue-400 text-[10px] mt-1 uppercase font-bold"><Loader2 className="w-3 h-3 animate-spin"/> Running</span>}
+                      {t.status === 'done' && <span className="flex items-center gap-1.5 text-emerald-400 text-[10px] mt-1 uppercase font-bold"><Check className="w-3 h-3"/> Completed</span>}
                    </div>
                 ))}
               </div>
@@ -493,18 +552,18 @@ export const SecureChatView: React.FC = () => {
         )}
 
         {thoughtsText && (
-          <div className="rounded-lg bg-[#121212] border border-blue-500/30 text-xs font-mono overflow-hidden my-2">
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono overflow-hidden my-3 shadow-sm">
             <button
               onClick={() => setOpenThinkId(openThinkId === msgId ? null : msgId)}
-              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#BDBDBD] transition-colors"
+              className="w-full px-4 py-3 bg-zinc-800/50 hover:bg-zinc-800 flex items-center justify-between text-zinc-400 transition-colors"
             >
-              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-blue-400">
-                <Brain className="w-3.5 h-3.5" /> Reasoning
+              <span className="flex items-center gap-2 font-bold uppercase tracking-widest text-[11px] text-zinc-300">
+                <Brain className="w-4 h-4" /> Reasoning Process
               </span>
-              {openThinkId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {openThinkId === msgId ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
             {openThinkId === msgId && (
-              <div className="p-3 text-blue-100 bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
+              <div className="p-4 text-zinc-400 bg-[#0b0b0d] border-t border-zinc-800 leading-relaxed whitespace-pre-wrap">
                 {thoughtsText}
               </div>
             )}
@@ -512,31 +571,52 @@ export const SecureChatView: React.FC = () => {
         )}
 
         {msg.searchSummary && (
-          <div className="rounded-lg bg-[#121212] border border-[#FFD54F]/30 text-xs font-mono overflow-hidden my-2">
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono overflow-hidden my-3 shadow-sm">
             <button
               onClick={() => setOpenSearchId(openSearchId === msgId ? null : msgId)}
-              className="w-full px-3 py-2 bg-[#1A1A1A] hover:bg-[#252525] flex items-center justify-between text-[#FFD54F] transition-colors"
+              className="w-full px-4 py-3 bg-zinc-800/50 hover:bg-zinc-800 flex items-center justify-between text-zinc-400 transition-colors"
             >
-              <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
-                <Globe className="w-3.5 h-3.5" /> Web Search Sources ({msg.sources?.length || 0})
+              <span className="flex items-center gap-2 font-bold uppercase tracking-widest text-[11px] text-zinc-300">
+                <Globe className="w-4 h-4" /> Web Search Sources ({msg.sources?.length || 0})
               </span>
-              {openSearchId === msgId ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {openSearchId === msgId ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
             {openSearchId === msgId && (
-              <div className="p-3 text-[#BDBDBD] bg-[#0D0D0D] border-t border-[#252525] leading-relaxed whitespace-pre-wrap">
+              <div className="p-4 text-zinc-400 bg-[#0b0b0d] border-t border-zinc-800 leading-relaxed whitespace-pre-wrap">
                 {msg.searchSummary}
               </div>
             )}
           </div>
         )}
 
+        {msg.artifacts && msg.artifacts.length > 0 && (
+           <div className="flex flex-col gap-3 my-4">
+             {msg.artifacts.map((art, idx) => (
+               <div key={idx} className="bg-zinc-900 rounded-xl p-4 flex items-center justify-between border border-zinc-800 shadow-sm">
+                 <div className="flex items-center gap-4 text-zinc-300">
+                   <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
+                     <Box className="w-5 h-5" />
+                   </div>
+                   <div>
+                     <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-0.5">Interactive Artifact</div>
+                     <div className="text-sm font-bold text-zinc-100">{art.title}</div>
+                   </div>
+                 </div>
+                 <button onClick={() => { setActiveArtifact(art); setCanvasOpen(true); }} className="px-4 py-2 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 text-xs font-extrabold uppercase tracking-widest rounded-lg transition-all border border-zinc-600 shadow-sm">
+                   Open
+                 </button>
+               </div>
+             ))}
+           </div>
+        )}
+
         {msg.images && msg.images.length > 0 && (
-           <div className="flex flex-wrap gap-2 my-3">
+           <div className="flex flex-wrap gap-4 my-4">
               {msg.images.map((imgBase64, idx) => (
-                 <div key={idx} className="relative group rounded-xl overflow-hidden border border-[#333333] shadow-lg">
-                   <img src={`data:image/jpeg;base64,${imgBase64}`} alt="Generated Content" className="w-64 h-64 object-cover" />
-                   <a href={`data:image/jpeg;base64,${imgBase64}`} download={`generated_image_${idx}.jpg`} className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80">
-                     <Download className="w-4 h-4" />
+                 <div key={idx} className="relative group rounded-2xl overflow-hidden border border-zinc-700 shadow-lg">
+                   <img src={`data:image/jpeg;base64,${imgBase64}`} alt="Generated visual" className="w-72 h-72 object-cover" />
+                   <a href={`data:image/jpeg;base64,${imgBase64}`} download={`generated_image_${idx}.jpg`} className="absolute top-3 right-3 bg-black/60 backdrop-blur p-2 rounded-xl text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:scale-105 shadow-xl">
+                     <Download className="w-5 h-5" />
                    </a>
                  </div>
               ))}
@@ -544,20 +624,20 @@ export const SecureChatView: React.FC = () => {
         )}
 
         {msg.models3D && msg.models3D.length > 0 && (
-           <div className="flex flex-col gap-3 my-3">
+           <div className="flex flex-col gap-4 my-4">
               {msg.models3D.map((res, idx) => {
                  let glbUrl = typeof res === 'string' && res.startsWith('http') ? res : (res?.model_url || '');
                  if (typeof res === 'string' && res.length > 1000 && !res.startsWith('http')) {
                     glbUrl = `data:model/gltf-binary;base64,${res}`;
                  }
                  return glbUrl ? (
-                   <div key={idx} className="h-64 w-full max-w-sm rounded-xl overflow-hidden border border-[#333333] bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a]">
+                   <div key={idx} className="h-72 w-full max-w-md rounded-2xl overflow-hidden border border-zinc-700 bg-gradient-to-b from-[#1a1a1c] to-[#0b0b0d] shadow-lg">
                      <ModelViewer src={glbUrl} auto-rotate camera-controls style={{ width: '100%', height: '100%' }} />
                    </div>
                  ) : (
-                   <div key={idx} className="p-3 bg-black/50 text-xs border border-white/10 rounded-lg text-emerald-400 font-mono">
-                     <span className="text-white block mb-1">3D Data Generated (Raw):</span>
-                     {JSON.stringify(res).slice(0, 150)}...
+                   <div key={idx} className="p-4 bg-zinc-900 text-xs border border-zinc-800 rounded-xl text-zinc-400 font-mono">
+                     <span className="text-zinc-300 block mb-2 uppercase font-bold tracking-widest text-[10px]">3D Data Generated (Raw):</span>
+                     {JSON.stringify(res).slice(0, 200)}...
                    </div>
                  );
               })}
@@ -565,21 +645,28 @@ export const SecureChatView: React.FC = () => {
         )}
 
         {msg.latexBlocks && msg.latexBlocks.length > 0 && (
-           <div className="flex flex-col gap-3 my-3">
+           <div className="flex flex-col gap-5 my-5">
               {msg.latexBlocks.map((block, idx) => {
                  const pdfUrl = `https://latexonline.cc/compile?text=${encodeURIComponent(block.code)}`;
                  return (
-                 <div key={idx} className="border border-[#333333] rounded-lg overflow-hidden bg-[#1A1A1A] text-white shadow-md">
-                   <div className="bg-[#252525] p-3 flex justify-between items-center border-b border-[#333333]">
-                     <span className="flex items-center gap-2 font-bold text-sm">
-                       <BookOpen className="w-4 h-4 text-[#FFD54F]" /> 
-                       {block.isSlideshow ? 'Beamer Presentation' : 'LaTeX Document Rendering'}
-                     </span>
-                     <button onClick={() => window.open(pdfUrl, '_blank')} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD54F] text-black text-xs font-bold rounded hover:bg-[#ffc107] transition-colors">
-                       <Maximize2 className="w-3.5 h-3.5"/> Open Full Screen
+                 <div key={idx} className="bg-zinc-900 rounded-2xl overflow-hidden shadow-lg border border-zinc-800">
+                   <div className="bg-[#1a1a1c] p-3.5 flex justify-between items-center border-b border-zinc-800">
+                     <div className="flex items-center gap-4">
+                       <div className="flex gap-1.5 ml-2">
+                         <div className="w-3 h-3 rounded-full bg-red-500/80 shadow-sm" />
+                         <div className="w-3 h-3 rounded-full bg-amber-500/80 shadow-sm" />
+                         <div className="w-3 h-3 rounded-full bg-emerald-500/80 shadow-sm" />
+                       </div>
+                       <span className="flex items-center gap-2 font-mono font-bold uppercase tracking-widest text-xs text-zinc-300">
+                         <BookOpen className="w-4 h-4" /> 
+                         {block.isSlideshow ? 'Presentation Viewer' : 'Document Viewer'}
+                       </span>
+                     </div>
+                     <button onClick={() => window.open(pdfUrl, '_blank')} className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-300 font-extrabold uppercase tracking-widest text-[10px] rounded-lg hover:bg-zinc-700 transition-colors border border-zinc-700 shadow-sm">
+                       <Maximize2 className="w-3.5 h-3.5"/> Full Screen
                      </button>
                    </div>
-                   <div className="w-full h-[600px] bg-white">
+                   <div className="w-full h-[650px] bg-zinc-100">
                      <iframe src={pdfUrl} className="w-full h-full border-0" title="PDF Viewer" />
                    </div>
                  </div>
@@ -589,23 +676,39 @@ export const SecureChatView: React.FC = () => {
         )}
 
         {cleanText && (
-          <div className="prose prose-invert prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent max-w-none text-[13px] sm:text-sm text-current">
+          <div className="text-[15px] text-zinc-200 font-sans w-full max-w-none">
             <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
               components={{
+                h1: ({node, ...props}) => <h1 className="text-2xl sm:text-3xl font-extrabold mb-4 mt-6 text-white tracking-tight" {...props} />,
+                h2: ({node, ...props}) => <h2 className="text-xl sm:text-2xl font-bold mb-3 mt-5 text-white tracking-tight" {...props} />,
+                h3: ({node, ...props}) => <h3 className="text-lg sm:text-xl font-semibold mb-3 mt-4 text-white" {...props} />,
+                h4: ({node, ...props}) => <h4 className="text-base sm:text-lg font-semibold mb-2 mt-3 text-zinc-100" {...props} />,
+                ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 space-y-1.5 marker:text-zinc-500" {...props} />,
+                ol: ({node, ...props}) => <ol className="list-decimal ml-6 mb-4 space-y-1.5 marker:text-zinc-500" {...props} />,
+                li: ({node, ...props}) => <li className="text-zinc-200 leading-relaxed" {...props} />,
+                p: ({node, ...props}) => <p className="mb-4 leading-relaxed last:mb-0" {...props} />,
+                strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />,
+                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-zinc-600 pl-4 py-1 italic text-zinc-400 my-4 bg-zinc-900/50 rounded-r-lg" {...props} />,
+                table: ({node, ...props}) => <div className="overflow-x-auto mb-4 border border-zinc-800 rounded-lg"><table className="min-w-full divide-y divide-zinc-800 text-sm" {...props} /></div>,
+                th: ({node, ...props}) => <th className="px-4 py-3 text-left font-bold text-zinc-300 uppercase tracking-wider bg-zinc-900" {...props} />,
+                td: ({node, ...props}) => <td className="px-4 py-3 text-zinc-300 border-t border-zinc-800 bg-[#121214]/50" {...props} />,
+                a: ({node, ...props}) => <a className="text-[#FFD54F] hover:text-amber-400 underline underline-offset-4 decoration-amber-500/30 transition-colors" target="_blank" rel="noopener noreferrer" {...props} />,
                 code({node, inline, className, children, ...props}: any) {
                   const match = /language-(\w+)/.exec(className || '')
                   return !inline && match ? (
-                    <div className="my-3 rounded-lg overflow-hidden bg-[#0D0D0D] border border-[#2A2A2A] text-xs font-mono">
-                      <div className="bg-[#1A1A1A] px-4 py-2 flex items-center justify-between border-b border-[#2A2A2A] text-[#BDBDBD]">
-                        <span className="uppercase font-semibold tracking-wider">{match[1]}</span>
+                    <div className="my-5 rounded-lg overflow-hidden bg-[#121214] border border-zinc-800 text-xs font-mono shadow-sm">
+                      <div className="bg-[#1a1a1c] px-4 py-2.5 flex items-center justify-between border-b border-zinc-800 text-zinc-400">
+                        <span className="text-[11px] uppercase tracking-widest font-bold">{match[1]}</span>
+                        <Copy className="w-3.5 h-3.5 cursor-pointer hover:text-white transition-colors" onClick={() => copyToClipboard(String(children).replace(/\n$/, ''), msgId)} />
                       </div>
-                      <pre className="p-4 overflow-x-auto text-[#F5F5F5] leading-relaxed">
+                      <pre className="p-4 overflow-x-auto text-zinc-300 leading-relaxed selection:bg-zinc-700">
                         <code className={className} {...props}>{children}</code>
                       </pre>
                     </div>
                   ) : (
-                    <code className="bg-black/20 px-1.5 py-0.5 rounded font-mono font-bold" {...props}>{children}</code>
+                    <code className="bg-zinc-800/80 text-zinc-200 px-1.5 py-0.5 rounded font-mono text-[13px] border border-zinc-700/50" {...props}>{children}</code>
                   )
                 }
               }}
@@ -619,138 +722,108 @@ export const SecureChatView: React.FC = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-64px)] flex overflow-hidden bg-[#121212] text-[#F5F5F5] relative">
-      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden" />}
+    <div className="h-[calc(100vh-64px)] flex overflow-hidden bg-[#0b0b0d] text-zinc-100 relative font-sans selection:bg-zinc-700 selection:text-white">
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/80 backdrop-blur-sm z-30 md:hidden" />}
 
-      <aside className={`w-64 sm:w-72 bg-[#1A1A1A] border-r border-[#333333] flex flex-col justify-between flex-shrink-0 z-40 transition-transform duration-300 md:static fixed inset-y-0 left-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-4 space-y-4">
-          <button onClick={handleNewChat} className="w-full py-2.5 px-4 rounded-lg bg-transparent border border-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] text-[#FFD54F] font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group shadow-md shadow-[#FFD54F]/10">
+      <aside className={`w-64 sm:w-72 bg-[#121214] border-r border-zinc-800 flex flex-col justify-between flex-shrink-0 z-40 transition-transform duration-300 md:static fixed inset-y-0 left-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="p-5 space-y-5">
+          <button onClick={handleNewChat} className="w-full py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-extrabold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 group shadow-sm border border-zinc-700">
             <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" /> New Session
           </button>
-          <div className="space-y-1">
-            <div className="px-3 py-1 text-[11px] font-bold text-[#BDBDBD] uppercase tracking-wider">Conversations</div>
+          <div className="space-y-1.5">
+            <div className="px-3 py-2 text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest">Conversations</div>
             {sessions.map((sess) => (
-              <div key={sess.id} onClick={() => { setActiveSessionId(sess.id); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium cursor-pointer transition-all group ${sess.id === activeSessionId ? 'bg-[#252525] text-[#FFD54F] border-l-2 border-[#FFD54F]' : 'text-[#BDBDBD] hover:bg-[#252525]/50 hover:text-[#F5F5F5]'}`}>
-                <div className="flex items-center gap-2 truncate flex-1 min-w-0">
-                  <MessageSquare className="w-3.5 h-3.5 text-[#FFD54F] flex-shrink-0" />
-                  <span className="truncate">{sess.title}</span>
+              <div key={sess.id} onClick={() => { setActiveSessionId(sess.id); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all group ${sess.id === activeSessionId ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}>
+                <div className="flex items-center gap-3 truncate flex-1 min-w-0">
+                  <MessageSquare className={`w-4 h-4 flex-shrink-0 ${sess.id === activeSessionId ? 'text-zinc-300' : 'text-zinc-500'}`} />
+                  <span className="truncate tracking-wide">{sess.title}</span>
                 </div>
                 {!sess.id.startsWith('session-') && (
-                  <button onClick={(e) => handleDeleteSession(e, sess.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-400 p-1 rounded transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={(e) => handleDeleteSession(e, sess.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-400 p-1 rounded transition-opacity"><Trash2 className="w-4 h-4" /></button>
                 )}
               </div>
             ))}
           </div>
         </div>
-        <div className="p-4 border-t border-[#333333] bg-[#121212] text-xs text-[#BDBDBD] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#FFD54F] font-medium text-[11px]"><ShieldCheck className="w-3.5 h-3.5" /><span>Sovereign Sandbox</span></div>
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <div className="p-5 border-t border-zinc-800 bg-[#0b0b0d] text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2 text-zinc-400 font-extrabold uppercase tracking-widest text-[10px]"><ShieldCheck className="w-4 h-4" /><span>Sovereign</span></div>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></span>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col justify-between bg-gradient-to-br from-[#121212] to-[#0a0a0a] relative w-full overflow-hidden">
-        <div className="h-14 border-b border-[#333333] bg-[#1A1A1A]/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between text-xs text-[#BDBDBD] z-10">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-md text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] md:hidden transition-colors"><PanelLeftOpen className="w-5 h-5" /></button>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#FFD54F] shadow-[0_0_8px_#FFD54F]"></span>
-              <span className="font-bold text-[#F5F5F5] tracking-wide truncate max-w-[140px] sm:max-w-xs">{activeSession.title}</span>
+      <main className="flex-1 flex flex-col relative w-full overflow-hidden bg-[#0b0b0d]">
+        <div className="h-16 border-b border-zinc-800 bg-[#0b0b0d]/90 backdrop-blur-md px-4 sm:px-8 flex items-center justify-between z-10">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 md:hidden transition-colors"><PanelLeftOpen className="w-5 h-5" /></button>
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-zinc-100 tracking-wide truncate max-w-[140px] sm:max-w-xs text-sm">{activeSession.title}</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative flex items-center">
-              <Cpu className="w-3.5 h-3.5 text-[#FFD54F] absolute left-3 pointer-events-none z-10" />
-              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value as any)} className="bg-[#252525]/80 text-[#FFD54F] border border-[#FFD54F]/30 pl-9 pr-8 py-1.5 rounded-full text-[11px] font-mono font-bold focus:outline-none focus:border-[#FFD54F] hover:bg-[#2F2F2F] transition-all appearance-none shadow-sm">
-                <option value="anacleto-large">Anacleto-Large (Omni)</option>
-                <option value="anacleto-medium">Anacleto-Medium (Balanced)</option>
-                <option value="anacleto-small">Anacleto-Small (Compact)</option>
+              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value as any)} className="bg-transparent text-zinc-300 pr-8 py-2 text-xs font-mono font-bold focus:outline-none transition-all appearance-none cursor-pointer uppercase tracking-wider hover:text-white">
+                <option value="anacleto-large">Anacleto-Large</option>
+                <option value="anacleto-medium">Anacleto-Medium</option>
+                <option value="anacleto-small">Anacleto-Small</option>
               </select>
-              <ChevronDown className="w-3 h-3 text-[#FFD54F] absolute right-3 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-1 pointer-events-none" />
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 max-w-5xl w-full mx-auto">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-3 sm:gap-4 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.sender === 'ai' && (
-                <div className={`w-9 h-9 rounded-xl p-[1px] flex-shrink-0 bg-gradient-to-br from-[#FFD54F] to-[#f59e0b]`}>
-                  <div className="w-full h-full bg-[#121212] rounded-[11px] flex items-center justify-center shadow-inner">
-                    {msg.isError ? <AlertCircle className="w-5 h-5 text-red-500" /> : <Bot className="w-5 h-5 text-[#FFD54F]" />}
-                  </div>
-                </div>
-              )}
-              <div className={`group relative max-w-[85%] sm:max-w-[75%] rounded-2xl p-5 text-[13px] sm:text-sm leading-relaxed shadow-lg ${msg.sender === 'user' ? 'bg-gradient-to-br from-[#FFD54F] to-[#ffc107] text-[#000000] font-medium rounded-tr-none shadow-[#FFD54F]/20' : msg.isError ? 'bg-red-950/40 border border-red-800 text-red-200 rounded-tl-none' : 'bg-[#1e1e1e] border border-[#333333] text-[#F5F5F5] rounded-tl-none'}`}>
-                <div className="flex items-center justify-between gap-4 mb-3 text-[11px] opacity-70 border-b border-current/10 pb-2 font-mono">
-                  <span className="font-bold flex items-center gap-1.5">{msg.sender === 'user' ? 'You' : msg.modelUsed || 'Anacleto AI'}</span>
-                  <div className="flex items-center gap-2">
-                    {msg.latency && <span className="flex items-center gap-1 text-emerald-400 font-bold"><Zap className="w-3.5 h-3.5" />{msg.latency}</span>}
-                    <span>{msg.timestamp}</span>
-                  </div>
-                </div>
-                <div>{renderMessageContent(msg)}</div>
-              </div>
-              {msg.sender === 'user' && (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-[#252525] border border-[#333333] flex items-center justify-center text-[#F5F5F5] flex-shrink-0 shadow-md">
-                    <User className="w-5 h-5" />
-                  </div>
-                  <button onClick={() => handleEditMessage(msg)} className="p-1.5 rounded-full text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors opacity-0 group-hover:opacity-100" title="Edit Message">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-4 w-full">
+            <div className="mb-8 text-center">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-zinc-100 tracking-tight mb-2">What will you build today?</h2>
+              <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Sovereign Foundation Models</p>
             </div>
-          ))}
-          <div ref={messagesEndRef} className="h-4" />
-        </div>
-
-        <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0a0a0a] to-transparent max-w-5xl w-full mx-auto pb-6">
-          <div className="bg-[#1A1A1A]/90 backdrop-blur-xl border border-[#333333] rounded-2xl p-2 shadow-2xl">
-            <div className="flex items-center gap-2 overflow-x-auto mb-2 px-2 pt-1 pb-2 border-b border-[#333333]/50">
-              {[
-                { label: 'Web', state: webSearchEnabled, set: setWebSearchEnabled, icon: Globe },
-                { label: 'Think', state: deepReasoningEnabled, set: setDeepReasoningEnabled, icon: Brain },
-                { label: 'Image', state: imageGenEnabled, set: setImageGenEnabled, icon: ImageIcon },
-                { label: '3D', state: model3DEnabled, set: setModel3DEnabled, icon: Box },
-                { label: 'PDF', state: pdfGenEnabled, set: setPdfGenEnabled, icon: BookOpen },
-                { label: 'Slides', state: slideshowGenEnabled, set: setSlideshowGenEnabled, icon: Layout }
-              ].map(t => (
-                <button
-                  key={t.label} type="button" onClick={() => t.set(!t.state)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${t.state ? 'bg-[#FFD54F] text-black shadow-sm' : 'bg-[#252525] text-[#BDBDBD] hover:text-white hover:bg-[#333]'}`}
-                >
-                  <t.icon className="w-3.5 h-3.5" /> {t.label}
-                </button>
+            <div className="w-full max-w-3xl">
+              {renderInputBox()}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto w-full scroll-smooth">
+              <div className="max-w-4xl w-full mx-auto p-4 sm:p-8 space-y-10 pb-8">
+                {messages.map((msg) => (
+                <div key={msg.id} className={`flex gap-4 sm:gap-6 w-full ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.sender === 'ai' && (
+                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-1 border border-zinc-700">
+                      {msg.isError ? <AlertCircle className="w-4 h-4 text-red-500" /> : <Bot className="w-4 h-4 text-zinc-300" />}
+                    </div>
+                  )}
+                  <div className={`group relative ${msg.sender === 'user' ? 'max-w-[85%] sm:max-w-[75%] rounded-3xl p-5 bg-[#1a1a1c] text-zinc-100 border border-zinc-800 shadow-sm' : 'max-w-full text-zinc-100 pt-0.5 flex-1'}`}>
+                    <div className="flex items-center justify-between gap-4 mb-2 text-[11px] opacity-60 font-mono">
+                      <span className="font-bold uppercase tracking-widest">{msg.sender === 'user' ? 'You' : msg.modelUsed || 'Anacleto'}</span>
+                      <div className="flex items-center gap-3">
+                        {msg.latency && <span className="flex items-center gap-1.5 text-emerald-400 font-bold"><Zap className="w-3.5 h-3.5" />{msg.latency}</span>}
+                      </div>
+                    </div>
+                    <div className="w-full">{renderMessageContent(msg)}</div>
+                  </div>
+                  {msg.sender === 'user' && (
+                    <div className="flex flex-col items-center gap-2 mt-1">
+                      <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 flex-shrink-0">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <button onClick={() => handleEditMessage(msg)} className="p-2 rounded-full text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 transition-colors opacity-0 group-hover:opacity-100" title="Edit Message">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
-            </div>
-            {selectedFile && (
-              <div className="mb-2 mx-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#252525] border border-[#FFD54F]/40 text-xs text-[#FFD54F] font-mono shadow-md">
-                <FileText className="w-3.5 h-3.5" />
-                <span className="max-w-[200px] truncate font-bold">{selectedFile.name}</span>
-                {extractedFileText && <span className="text-[10px] text-[#BDBDBD] bg-[#121212] px-1.5 py-0.5 rounded ml-1">{extractedFileText.length.toLocaleString()} chars</span>}
-                <button onClick={() => { setSelectedFile(null); setExtractedFileText(''); }} className="text-[#888] hover:text-white ml-2">×</button>
+                <div ref={messagesEndRef} className="h-6" />
               </div>
-            )}
-            <div className="relative">
-              <form onSubmit={handleSendMessage} className="relative flex items-center">
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute left-2 p-2.5 rounded-xl text-[#BDBDBD] hover:text-[#FFD54F] hover:bg-[#252525] transition-colors"><Paperclip className="w-5 h-5" /></button>
-              <textarea
-                rows={1} value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
-                placeholder={`Ask ${selectedModel === 'anacleto-small' ? 'Anacleto-Small' : selectedModel === 'anacleto-medium' ? 'Anacleto-Medium' : 'Anacleto-Large'} to use tools or chat...`}
-                className="w-full pl-14 pr-16 py-4 rounded-xl bg-transparent text-[#F5F5F5] placeholder-[#666666] text-sm focus:outline-none resize-none"
-              />
-              <button type={loading ? "button" : "submit"} onClick={() => loading ? abortControllerRef.current?.abort() : undefined} disabled={(!inputMessage.trim() && !selectedFile && !loading)} className={`absolute right-2 p-3 rounded-xl transition-all shadow-md ${loading ? 'bg-red-950/90 text-red-300 hover:bg-red-900 border border-red-500/50' : 'bg-gradient-to-r from-[#FFD54F] to-[#ffc107] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 text-[#000000]'}`}>
-                {loading ? <XCircle className="w-4 h-4 font-bold" /> : <Send className="w-4 h-4 font-bold ml-0.5" />}
-              </button>
-            </form>
-          </div>
-        </div>
-          <div className="flex items-center justify-center text-[10px] text-[#666] mt-3 font-mono">
-            <span className="flex items-center gap-1.5 uppercase tracking-wider"><Sparkles className="w-3 h-3 text-[#FFD54F]/70" /> Multimodal Engine Sandbox</span>
-          </div>
-        </div>
+            </div>
+
+            <div className="w-full p-4 sm:p-6 bg-gradient-to-t from-[#0b0b0d] via-[#0b0b0d] to-transparent flex justify-center z-20 mt-auto">
+              <div className="w-full max-w-4xl">
+                {renderInputBox()}
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       {activeArtifact && <ArtifactCanvas isOpen={canvasOpen} onClose={() => setCanvasOpen(false)} title={activeArtifact.title} type={activeArtifact.type} content={activeArtifact.content} />}
