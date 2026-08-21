@@ -10,14 +10,20 @@ import {
   FlaskConical, 
   Terminal, 
   Server, 
-  Sparkles 
+  Sparkles,
+  Image as ImageIcon,
+  Video,
+  Box,
+  Music,
+  GraduationCap,
+  BookOpen,
+  PenTool
 } from 'lucide-react';
 
-interface HomeViewProps {
-  onNavigate: (view: string, id?: string) => void;
-}
+import { useRouter } from 'next/navigation';
 
-export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
+export const HomeView: React.FC = () => {
+  const router = useRouter();
   return (
     <div className="relative pt-24 pb-16 overflow-hidden">
       {/* Background Gold Ambient Glows */}
@@ -51,7 +57,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
             <button
-              onClick={() => onNavigate('contact')}
+              onClick={() => router.push('/contact')}
               className="w-full sm:w-auto px-8 py-3.5 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] text-[#000000] font-bold text-base uppercase tracking-wider transition-all duration-200 shadow-lg shadow-[#FFD54F]/20 flex items-center justify-center gap-2 group"
             >
               Contact Us
@@ -59,7 +65,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             </button>
 
             <button
-              onClick={() => onNavigate('chat')}
+              onClick={() => router.push('/chat')}
               className="w-full sm:w-auto px-8 py-3.5 rounded-lg border border-[#FFD54F] bg-transparent text-[#FFD54F] hover:bg-[#FFD54F] hover:text-[#000000] font-bold text-base uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2"
             >
               <Bot className="w-5 h-5" />
@@ -83,7 +89,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             
             {/* Anacleto Small */}
             <div 
-              onClick={() => onNavigate('chat')}
+              onClick={() => router.push('/chat')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 flex flex-col justify-between group cursor-pointer"
             >
               <div>
@@ -106,7 +112,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* Anacleto Medium */}
             <div 
-              onClick={() => onNavigate('chat')}
+              onClick={() => router.push('/chat')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#FFD54F]/60 shadow-xl shadow-[#FFD54F]/5 transition-all duration-300 flex flex-col justify-between group relative cursor-pointer"
             >
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#FFD54F] text-black font-extrabold text-[10px] uppercase tracking-wider">
@@ -132,7 +138,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* Anacleto Large */}
             <div 
-              onClick={() => onNavigate('chat')}
+              onClick={() => router.push('/chat')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 flex flex-col justify-between group cursor-pointer"
             >
               <div>
@@ -156,11 +162,11 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* 2. DEVELOPER APIS & AUTONOMOUS AGENTS */}
+        {/* 2. DEVELOPER SOLUTIONS */}
         <div id="products" className="my-16 pt-8 border-t border-[#333333] scroll-mt-24">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h2 className="text-2xl sm:text-4xl font-bold text-[#F5F5F5] tracking-tight uppercase">
-              APIs & Autonomous Agents
+              Developer Solutions
             </h2>
             <p className="text-[#BDBDBD] text-sm sm:text-base mt-3">
               High-throughput developer APIs and specialized autonomous AI agents built for code generation and general workflow automation.
@@ -171,7 +177,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             
             {/* Developer APIs */}
             <div 
-              onClick={() => onNavigate('service-detail', 'api-docs')}
+              onClick={() => router.push('/developer-center')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -188,7 +194,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* Anacleto Code */}
             <div 
-              onClick={() => onNavigate('service-detail', 'anacleto-code')}
+              onClick={() => router.push('/solutions/developer')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -205,7 +211,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* Anacleto Agent */}
             <div 
-              onClick={() => onNavigate('service-detail', 'anacleto-agent')}
+              onClick={() => router.push('/solutions/developer')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -238,7 +244,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             
             {/* 1. Enterprise Access to Anacleto Models */}
             <div 
-              onClick={() => onNavigate('contact')}
+              onClick={() => router.push('/contact')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -252,7 +258,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* 2. Custom Fine-Tuning & Model Distillation */}
             <div 
-              onClick={() => onNavigate('service-detail', 'distillation')}
+              onClick={() => router.push('/solutions/enterprise')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -266,7 +272,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* 3. Sovereign RAG */}
             <div 
-              onClick={() => onNavigate('service-detail', 'rag')}
+              onClick={() => router.push('/solutions/enterprise')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -280,7 +286,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* 4. AI Appliance */}
             <div 
-              onClick={() => onNavigate('service-detail', 'appliance')}
+              onClick={() => router.push('/solutions/enterprise')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -294,7 +300,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* 5. Vertical Autonomous Agents */}
             <div 
-              onClick={() => onNavigate('service-detail', 'agents')}
+              onClick={() => router.push('/solutions/enterprise')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -308,7 +314,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
 
             {/* 6. Sovereign Red Teaming & Compliance */}
             <div 
-              onClick={() => onNavigate('service-detail', 'red-teaming')}
+              onClick={() => router.push('/solutions/enterprise')}
               className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
             >
               <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
@@ -320,6 +326,136 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
               </p>
             </div>
 
+          </div>
+        </div>
+
+        {/* 4. CREATOR SOLUTIONS */}
+        <div id="creator-solutions" className="my-16 pt-8 border-t border-[#333333] scroll-mt-24">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <h2 className="text-2xl sm:text-4xl font-bold text-[#F5F5F5] tracking-tight uppercase">
+              Creator Solutions
+            </h2>
+            <p className="text-[#BDBDBD] text-sm sm:text-base mt-3">
+              Empowering content creators with sovereign AI tools for seamless digital media generation.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            
+            {/* Image Generation */}
+            <div 
+              onClick={() => router.push('/solutions/creator')}
+              className="p-6 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer flex flex-col"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-4 group-hover:scale-110 transition-transform">
+                <ImageIcon className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-[#F5F5F5] mb-2">Image Generation</h3>
+              <p className="text-[#BDBDBD] text-xs leading-relaxed flex-1">
+                Generate high-fidelity, production-ready images from text prompts tailored to your specific brand aesthetic.
+              </p>
+            </div>
+
+            {/* Video Generation */}
+            <div 
+              onClick={() => router.push('/solutions/creator')}
+              className="p-6 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer flex flex-col"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-4 group-hover:scale-110 transition-transform">
+                <Video className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-[#F5F5F5] mb-2">Video Generation</h3>
+              <p className="text-[#BDBDBD] text-xs leading-relaxed flex-1">
+                Automate video script generation and seamlessly render cinematic video sequences without external studios.
+              </p>
+            </div>
+
+            {/* 3D Models Generation */}
+            <div 
+              onClick={() => router.push('/solutions/creator')}
+              className="p-6 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer flex flex-col"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-4 group-hover:scale-110 transition-transform">
+                <Box className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-[#F5F5F5] mb-2">3D Models Generation</h3>
+              <p className="text-[#BDBDBD] text-xs leading-relaxed flex-1">
+                Instantly convert flat concepts into rigged 3D models for gaming, animation, and virtual reality workflows.
+              </p>
+            </div>
+
+            {/* Audio Generation */}
+            <div 
+              onClick={() => router.push('/solutions/creator')}
+              className="p-6 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer flex flex-col"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-4 group-hover:scale-110 transition-transform">
+                <Music className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-[#F5F5F5] mb-2">Audio Generation</h3>
+              <p className="text-[#BDBDBD] text-xs leading-relaxed flex-1">
+                Synthesize realistic voiceovers, sound effects, and adaptive background music using sovereign audio models.
+              </p>
+            </div>
+            
+          </div>
+        </div>
+
+        {/* 5. EDUCATION SOLUTIONS */}
+        <div id="education-solutions" className="my-16 pt-8 border-t border-[#333333] scroll-mt-24">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <h2 className="text-2xl sm:text-4xl font-bold text-[#F5F5F5] tracking-tight uppercase">
+              Education Solutions
+            </h2>
+            <p className="text-[#BDBDBD] text-sm sm:text-base mt-3">
+              Specialized services for teaching, giving educators ultimate control while AI actively guides students through the learning process.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            {/* AI Assisted Learning */}
+            <div 
+              onClick={() => router.push('/solutions/education')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <GraduationCap className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">AI Assisted Learning</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed mb-4">
+                Personalized AI tutors that adapt to individual student pacing, explaining complex concepts without simply giving away the answers.
+              </p>
+            </div>
+
+            {/* AI Practician */}
+            <div 
+              onClick={() => router.push('/solutions/education')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Interactive Practician</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed mb-4">
+                Dynamic testing environments where AI generates bespoke practice problems, evaluates student work, and provides constructive feedback in real-time.
+              </p>
+            </div>
+
+            {/* Guided Lesson Workflows */}
+            <div 
+              onClick={() => router.push('/solutions/education')}
+              className="p-8 rounded-xl bg-[#1A1A1A] border border-[#333333] hover:border-[#FFD54F]/60 transition-all duration-300 group cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#FFD54F]/10 border border-[#FFD54F]/20 flex items-center justify-center text-[#FFD54F] mb-6 group-hover:scale-110 transition-transform">
+                <PenTool className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#F5F5F5] mb-3">Guided Lesson Workflows</h3>
+              <p className="text-[#BDBDBD] text-sm leading-relaxed mb-4">
+                Educators author the core lesson plans, and the AI actively assists the student, pacing them through the material strictly following the teacher's designed curriculum.
+              </p>
+            </div>
+            
           </div>
         </div>
 

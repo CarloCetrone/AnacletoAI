@@ -76,35 +76,17 @@ export const UserSettingsModal: React.FC<UserSettingsModalProps> = ({ isOpen, on
             <p className="text-xs text-[#BDBDBD]">
               Switch your account type to access different dashboard tools and limits.
             </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => updateAccountType('standard')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                  profile.accountType === 'standard' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
-                }`}
-              >
-                Standard
-              </button>
-              <button
-                type="button"
-                onClick={() => updateAccountType('developer')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                  profile.accountType === 'developer' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
-                }`}
-              >
-                Developer
-              </button>
-              <button
-                type="button"
-                onClick={() => updateAccountType('enterprise')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                  profile.accountType === 'enterprise' ? 'bg-[#FFD54F]/20 text-[#FFD54F] border border-[#FFD54F]/50' : 'bg-[#252525] text-[#666666] border border-[#333333] hover:text-[#BDBDBD]'
-                }`}
-              >
-                Enterprise
-              </button>
-            </div>
+            <select
+              value={profile.accountType}
+              onChange={(e) => updateAccountType(e.target.value as 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator')}
+              className="w-full mt-2 px-4 py-2.5 rounded-lg bg-[#252525] border border-[#333333] text-[#F5F5F5] text-sm font-semibold focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all appearance-none cursor-pointer"
+            >
+              <option value="standard">Standard User</option>
+              <option value="developer">Developer</option>
+              <option value="creator">Creator</option>
+              <option value="educator">Educator</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
           </div>
 
           {/* Security & Multi-Factor Auth */}

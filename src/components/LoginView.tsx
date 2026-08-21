@@ -19,7 +19,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   
   // User Account Type for RBAC
-  const [accountType, setAccountType] = useState<'standard' | 'developer' | 'enterprise'>('standard');
+  const [accountType, setAccountType] = useState<'standard' | 'developer' | 'enterprise' | 'creator' | 'educator'>('standard');
   const [username, setUsername] = useState('');
   const [enterpriseName, setEnterpriseName] = useState('');
   
@@ -185,35 +185,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onNavigate }) => {
               <label className="block text-xs font-semibold text-[#BDBDBD] uppercase tracking-wider mb-2">
                 Select Account Type
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAccountType('standard')}
-                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
-                    accountType === 'standard' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
-                  }`}
-                >
-                  Standard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAccountType('developer')}
-                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
-                    accountType === 'developer' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
-                  }`}
-                >
-                  Developer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAccountType('enterprise')}
-                  className={`p-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-colors ${
-                    accountType === 'enterprise' ? 'bg-[#FFD54F]/10 border-[#FFD54F] text-[#FFD54F]' : 'bg-[#121212] border-[#333333] text-[#666666] hover:border-[#FFD54F]/50'
-                  }`}
-                >
-                  Enterprise
-                </button>
-              </div>
+              <select
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value as 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator')}
+                className="w-full px-4 py-3 rounded-lg bg-[#121212] border border-[#333333] text-[#F5F5F5] text-sm font-semibold focus:outline-none focus:border-[#FFD54F] focus:ring-1 focus:ring-[#FFD54F] transition-all appearance-none cursor-pointer"
+              >
+                <option value="standard">Standard User</option>
+                <option value="developer">Developer</option>
+                <option value="creator">Creator</option>
+                <option value="educator">Educator</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
             </div>
           )}
 

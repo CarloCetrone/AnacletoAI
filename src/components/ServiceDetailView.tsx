@@ -28,7 +28,7 @@ export const ServiceDetailView: React.FC<ServiceDetailViewProps> = ({ serviceId,
 
   const renderServiceContent = () => {
     switch (serviceId) {
-      case 'api-docs':
+      case 'developer-center':
       case 'api':
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
@@ -350,7 +350,7 @@ export const ServiceDetailView: React.FC<ServiceDetailViewProps> = ({ serviceId,
 
   const getServiceInfo = () => {
     switch (serviceId) {
-      case 'api-docs':
+      case 'developer-center':
       case 'api': return { title: 'High-Throughput APIs', icon: Code2 };
       case 'anacleto-code': return { title: 'Anacleto Code', icon: Terminal };
       case 'anacleto-agent': return { title: 'Anacleto Agent', icon: Bot };

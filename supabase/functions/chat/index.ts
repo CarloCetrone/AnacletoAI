@@ -181,9 +181,36 @@ serve(async (req) => {
     }
 
     // Verify Credits
-    const { data: profile } = await adminSupabase.from("profiles").select("credit_balance, enterprise_id").eq("id", userId).single();
+    const { data: profile } = await adminSupabase.from("profiles").select("credit_balance, enterprise_id, credit_limit").eq("id", userId).single();
     if (!profile) throw new Error("User profile not found");
-    if (profile.credit_balance <= 0 && !profile.enterprise_id) throw new Error("Payment Required: Wallet empty.");
+
+    let targetBalance = profile.credit_balance;
+    if (profile.enterprise_id) {
+      const { data: entProfile } = await adminSupabase.from("profiles").select("credit_balance").eq("id", profile.enterprise_id).single();
+      if (!entProfile) throw new Error("Enterprise not found");
+      targetBalance = entProfile.credit_balance;
+
+      if (profile.credit_limit > 0) {
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        
+        const { data: usageData } = await adminSupabase
+          .from("token_usage")
+          .select("cost")
+          .eq("user_id", userId)
+          .gte("created_at", startOfMonth.toISOString());
+          
+        if (usageData) {
+          const totalCostThisMonth = usageData.reduce((acc: number, row: any) => acc + (Number(row.cost) || 0), 0);
+          if (totalCostThisMonth >= profile.credit_limit) {
+            throw new Error(`Payment Required: Monthly sponsored credit limit of $${profile.credit_limit} exceeded.`);
+          }
+        }
+      }
+    }
+
+    if (targetBalance <= 0) throw new Error("Payment Required: Wallet empty.");
 
     const currentMessages: any[] = [];
     
@@ -402,20 +429,22 @@ CRITICAL INSTRUCTIONS:
           const displayModelName = model === 'anacleto-small' ? 'Anacleto Small' : model === 'anacleto-large' ? 'Anacleto Large' : 'Anacleto Medium';
 
           try {
-             await adminSupabase.from("token_usage").insert({
-               user_id: userId,
-               model_name: displayModelName,
-               input_tokens: finalInputTokens,
-               output_tokens: finalOutputTokens,
-               enterprise_id: profile?.enterprise_id || null
-             });
-
-             // Deduct cost from profiles.credit_balance in Supabase
              const isLarge = model === 'anacleto-large';
              const isSmall = model === 'anacleto-small';
              const inRate = isLarge ? 2.50 : isSmall ? 0.15 : 0.70;
              const outRate = isLarge ? 10.00 : isSmall ? 0.60 : 2.80;
              const chatCost = (finalInputTokens * inRate + finalOutputTokens * outRate) / 1000000;
+
+             await adminSupabase.from("token_usage").insert({
+               user_id: userId,
+               model_name: displayModelName,
+               input_tokens: finalInputTokens,
+               output_tokens: finalOutputTokens,
+               cost: chatCost,
+               enterprise_id: profile?.enterprise_id || null
+             });
+
+             // Deduct cost from target wallet
 
              const targetUserId = profile?.enterprise_id || userId;
              const { data: userProf } = await adminSupabase

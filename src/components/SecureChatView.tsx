@@ -459,22 +459,35 @@ export const SecureChatView: React.FC = () => {
 
   const renderInputBox = () => (
     <div className="bg-[#121214] border border-zinc-800 rounded-3xl p-2 sm:p-3 shadow-2xl relative">
-      <div className="flex items-center gap-2 overflow-x-auto mb-2 px-2 pt-1 pb-2 border-b border-zinc-800/50">
-        {[
-          { label: 'Web', state: webSearchEnabled, set: setWebSearchEnabled, icon: Globe },
-          { label: 'Think', state: deepReasoningEnabled, set: setDeepReasoningEnabled, icon: Brain },
-          { label: 'Image', state: imageGenEnabled, set: setImageGenEnabled, icon: ImageIcon },
-          { label: '3D', state: model3DEnabled, set: setModel3DEnabled, icon: Box },
-          { label: 'PDF', state: pdfGenEnabled, set: setPdfGenEnabled, icon: BookOpen },
-          { label: 'Slides', state: slideshowGenEnabled, set: setSlideshowGenEnabled, icon: Layout }
-        ].map(t => (
-          <button
-            key={t.label} type="button" onClick={() => t.set(!t.state)}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap border ${t.state ? 'bg-zinc-800 text-zinc-100 border-zinc-600 shadow-sm' : 'bg-transparent text-zinc-500 border-transparent hover:text-zinc-300'}`}
-          >
-            <t.icon className="w-3.5 h-3.5" /> {t.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-2 overflow-x-auto mb-2 px-2 pt-1 pb-2 border-b border-zinc-800/50 justify-between">
+        <div className="flex items-center gap-2 shrink-0">
+          {[
+            { label: 'Web', state: webSearchEnabled, set: setWebSearchEnabled, icon: Globe },
+            { label: 'Think', state: deepReasoningEnabled, set: setDeepReasoningEnabled, icon: Brain },
+            { label: 'Image', state: imageGenEnabled, set: setImageGenEnabled, icon: ImageIcon },
+            { label: '3D', state: model3DEnabled, set: setModel3DEnabled, icon: Box },
+            { label: 'PDF', state: pdfGenEnabled, set: setPdfGenEnabled, icon: BookOpen },
+            { label: 'Slides', state: slideshowGenEnabled, set: setSlideshowGenEnabled, icon: Layout }
+          ].map(t => (
+            <button
+              key={t.label} type="button" onClick={() => t.set(!t.state)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap border ${t.state ? 'bg-zinc-800 text-zinc-100 border-zinc-600 shadow-sm' : 'bg-transparent text-zinc-500 border-transparent hover:text-zinc-300'}`}
+            >
+              <t.icon className="w-3.5 h-3.5" /> {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <div className="h-4 w-px bg-zinc-700 hidden sm:block" />
+          <div className="relative flex items-center bg-zinc-900 border border-zinc-700 rounded-lg px-2">
+            <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value as any)} className="bg-transparent text-zinc-300 pr-6 py-1.5 text-[11px] font-mono font-bold focus:outline-none transition-all appearance-none cursor-pointer uppercase tracking-wider hover:text-white">
+              <option value="anacleto-large">Anacleto Large</option>
+              <option value="anacleto-medium">Anacleto Medium</option>
+              <option value="anacleto-small">Anacleto Small</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-1.5 pointer-events-none" />
+          </div>
+        </div>
       </div>
       {selectedFile && (
         <div className="mb-2 mx-2 inline-flex items-center gap-3 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 font-mono">
@@ -752,24 +765,9 @@ export const SecureChatView: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col relative w-full overflow-hidden bg-[#0b0b0d]">
-        <div className="h-16 border-b border-zinc-800 bg-[#0b0b0d]/90 backdrop-blur-md px-4 sm:px-8 flex items-center justify-between z-10">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 md:hidden transition-colors"><PanelLeftOpen className="w-5 h-5" /></button>
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-zinc-100 tracking-wide truncate max-w-[140px] sm:max-w-xs text-sm">{activeSession.title}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center">
-              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value as any)} className="bg-transparent text-zinc-300 pr-8 py-2 text-xs font-mono font-bold focus:outline-none transition-all appearance-none cursor-pointer uppercase tracking-wider hover:text-white">
-                <option value="anacleto-large">Anacleto-Large</option>
-                <option value="anacleto-medium">Anacleto-Medium</option>
-                <option value="anacleto-small">Anacleto-Small</option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-1 pointer-events-none" />
-            </div>
-          </div>
-        </div>
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="absolute top-4 left-4 p-2.5 rounded-xl text-zinc-400 hover:text-white bg-[#121214] border border-zinc-800 md:hidden z-20 shadow-md transition-colors">
+          <PanelLeftOpen className="w-5 h-5" />
+        </button>
 
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-4 w-full">

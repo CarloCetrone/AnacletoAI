@@ -4,6 +4,7 @@ CREATE TABLE public.token_usage (
   model_name text NOT NULL,
   input_tokens integer NOT NULL,
   output_tokens integer NOT NULL,
+  cost numeric DEFAULT 0,
   created_at timestamp with time zone DEFAULT now(),
   enterprise_id uuid,
   CONSTRAINT token_usage_pkey PRIMARY KEY (id),

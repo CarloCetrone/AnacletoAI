@@ -525,9 +525,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   ? 'bg-[#FFD54F]/15 border border-[#FFD54F]/40 text-[#FFD54F]'
                   : profile?.accountType === 'developer'
                   ? 'bg-blue-500/15 border border-blue-500/40 text-blue-400'
-                  : 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-400'
+                  : profile?.accountType === 'creator'
+                  ? 'bg-purple-500/15 border border-purple-500/40 text-purple-400'
+                  : profile?.accountType === 'educator'
+                  ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-400'
+                  : 'bg-gray-500/15 border border-gray-500/40 text-gray-400'
               }`}>
-                {profile?.accountType === 'enterprise' ? 'Enterprise Tier' : profile?.accountType === 'developer' ? 'Developer Tier' : 'Standard User'}
+                {profile?.accountType === 'enterprise' ? 'Enterprise Tier' : profile?.accountType === 'developer' ? 'Developer Tier' : profile?.accountType === 'creator' ? 'Creator Tier' : profile?.accountType === 'educator' ? 'Educator Tier' : 'Standard User'}
               </span>
 
               {isSponsored && (
@@ -567,7 +571,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
             {profile?.accountType === 'developer' && (
               <button 
-                onClick={() => onNavigate('api-docs')}
+                onClick={() => onNavigate('developer-center')}
                 className="px-4 py-2.5 rounded-xl bg-[#121212] hover:bg-[#252525] border border-[#333333] text-[#F5F5F5] text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer"
               >
                 <Terminal className="w-4 h-4 text-[#FFD54F]" />
@@ -1080,7 +1084,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
 
               <button
-                onClick={() => onNavigate('api-docs')}
+                onClick={() => onNavigate('developer-center')}
                 className="px-4 py-2 rounded-xl bg-[#121212] hover:bg-[#252525] border border-[#333333] text-[#FFD54F] text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer"
               >
                 Launch Full API Playground <ArrowUpRight className="w-4 h-4" />

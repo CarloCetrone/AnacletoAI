@@ -92,17 +92,6 @@ serve(async (req) => {
           .eq("key_value", apiKey)
           .then();
       }
-
-      if (userId) {
-        const { data: userProf } = await adminSupabase
-          .from("profiles")
-          .select("enterprise_id")
-          .eq("id", userId)
-          .maybeSingle();
-        if (userProf?.enterprise_id) {
-          enterpriseId = userProf.enterprise_id;
-        }
-      }
     } else {
       // Fallback check JWT if passed directly by authenticated client session
       const token = apiKey;
@@ -120,14 +109,45 @@ serve(async (req) => {
         );
       }
       userId = user.id;
+    }
 
+    if (userId) {
       const { data: userProf } = await adminSupabase
         .from("profiles")
-        .select("enterprise_id")
+        .select("credit_balance, enterprise_id, credit_limit")
         .eq("id", userId)
         .maybeSingle();
-      if (userProf?.enterprise_id) {
-        enterpriseId = userProf.enterprise_id;
+
+      if (userProf) {
+        let targetBalance = userProf.credit_balance;
+        if (userProf.enterprise_id) {
+          enterpriseId = userProf.enterprise_id;
+          const { data: entProfile } = await adminSupabase.from("profiles").select("credit_balance").eq("id", userProf.enterprise_id).maybeSingle();
+          if (entProfile) targetBalance = entProfile.credit_balance;
+
+          if (userProf.credit_limit > 0) {
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
+            
+            const { data: usageData } = await adminSupabase
+              .from("token_usage")
+              .select("cost")
+              .eq("user_id", userId)
+              .gte("created_at", startOfMonth.toISOString());
+              
+            if (usageData) {
+              const totalCostThisMonth = usageData.reduce((acc: number, row: any) => acc + (Number(row.cost) || 0), 0);
+              if (totalCostThisMonth >= userProf.credit_limit) {
+                return new Response(JSON.stringify({ error: { message: `Payment Required: Monthly sponsored credit limit of $${userProf.credit_limit} exceeded.` } }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+              }
+            }
+          }
+        }
+
+        if (targetBalance <= 0) {
+          return new Response(JSON.stringify({ error: { message: "Payment Required: Wallet empty." } }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
     }
 
@@ -218,6 +238,7 @@ serve(async (req) => {
           model_name: formattedModelName,
           input_tokens: estInput,
           output_tokens: estOutput,
+          cost: computedCost,
           enterprise_id: enterpriseId
         });
 

@@ -8,7 +8,7 @@ export interface UserProfile {
   id: string;
   email: string;
   fullName?: string;
-  accountType: 'standard' | 'developer' | 'enterprise';
+  accountType: 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator';
   username?: string;
   enterpriseName?: string;
   enterpriseId?: string;
@@ -39,10 +39,10 @@ interface AuthContextType {
   loading: boolean;
   isConfigured: boolean;
   signInWithEmail: (email: string, pass: string) => Promise<{ error: string | null }>;
-  signUpWithEmail: (email: string, pass: string, termsAccepted: boolean, accountType: 'standard' | 'developer' | 'enterprise', username?: string, enterpriseName?: string) => Promise<{ error: string | null; emailVerificationRequired: boolean }>;
+  signUpWithEmail: (email: string, pass: string, termsAccepted: boolean, accountType: 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator', username?: string, enterpriseName?: string) => Promise<{ error: string | null; emailVerificationRequired: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
-  updateAccountType: (newType: 'standard' | 'developer' | 'enterprise') => Promise<{ error: string | null }>;
+  updateAccountType: (newType: 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator') => Promise<{ error: string | null }>;
   exportUserData: () => void;
   deleteUserAccount: () => Promise<{ error: string | null }>;
   fetchApiKeys: () => Promise<{ data: ApiKeyItem[]; error: string | null }>;
@@ -144,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: u.id,
       email: u.email || '',
       fullName: u.user_metadata?.full_name || '',
-      accountType: (u.user_metadata?.account_type as 'standard' | 'developer' | 'enterprise') || 'standard',
+      accountType: (u.user_metadata?.account_type as 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator') || 'standard',
       username: u.user_metadata?.username,
       enterpriseName: u.user_metadata?.enterprise_name,
       createdAt: u.created_at,
@@ -206,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUpWithEmail = async (email: string, pass: string, termsAccepted: boolean, accountType: 'standard' | 'developer' | 'enterprise', username?: string, enterpriseName?: string) => {
+  const signUpWithEmail = async (email: string, pass: string, termsAccepted: boolean, accountType: 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator', username?: string, enterpriseName?: string) => {
     if (!termsAccepted) {
       return { error: 'You must accept the Privacy Policy and Terms of Service to register.', emailVerificationRequired: false };
     }
@@ -288,7 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateAccountType = async (newType: 'standard' | 'developer' | 'enterprise') => {
+  const updateAccountType = async (newType: 'standard' | 'developer' | 'enterprise' | 'creator' | 'educator') => {
     if (isConfigured && user) {
       const { data, error } = await supabase.auth.updateUser({
         data: { account_type: newType }

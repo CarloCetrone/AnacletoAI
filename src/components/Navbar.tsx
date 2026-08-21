@@ -1,22 +1,21 @@
+'use client';
+
 import React, { useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { User, LogOut, Settings, Menu, X, Code2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { UserSettingsModal } from '@/components/UserSettingsModal';
 
-interface NavbarProps {
-  currentView: string;
-  setCurrentView: (view: string) => void;
-}
-
-export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) => {
+export const Navbar: React.FC = () => {
   const { user, profile, signOut } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
 
-  const handleNavClick = (view: string, sectionId?: string) => {
+  const handleNavClick = (sectionId?: string) => {
     setMobileMenuOpen(false);
-    setCurrentView(view);
     if (sectionId) {
       let attempts = 0;
       const scrollTarget = () => {
@@ -29,18 +28,26 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
         }
       };
       setTimeout(scrollTarget, 50);
-    } else if (view === 'home') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+  const isHome = pathname === '/';
+  const isSolutions = pathname.startsWith('/solutions');
+  const isContact = pathname === '/contact';
+  const isDashboard = pathname === '/dashboard';
+  const isChat = pathname === '/chat';
+  const isDeveloperCenter = pathname === '/developer-center';
+  const isCreatorCenter = pathname === '/creator-center';
+  const isEducatorCenter = pathname === '/educator-center';
 
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#121212]/90 border-b border-[#333333] transition-all duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Brand Logo */}
-          <div 
-            onClick={() => handleNavClick('home')}
+          <Link 
+            href="/"
+            onClick={() => handleNavClick()}
             className="flex items-center space-x-3 cursor-pointer group"
           >
             <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-[#1A1A1A] border border-[#FFD54F]/40 p-0.5 shadow-lg shadow-[#FFD54F]/10 group-hover:border-[#FFD54F] transition-all">
@@ -57,74 +64,118 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
               </span>
               <span className="text-[10px] tracking-wider text-[#BDBDBD] uppercase font-mono">Frontier AI & Research</span>
             </div>
-          </div>
+          </Link>
 
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center space-x-1">
-            <button
-              onClick={() => handleNavClick('home')}
+            <Link
+              href="/"
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'home'
+                isHome
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
               Home
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'models')}
-              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60"
-            >
-              Models
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'products')}
-              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60"
-            >
-              APIs & Agents
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'services')}
+            </Link>
+            <Link
+              href="/models"
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'solutions'
+                pathname === '/models'
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Enterprise Solutions
-            </button>
-            <button
-              onClick={() => handleNavClick('contact')}
+              Models
+            </Link>
+            <div className="relative group">
+              <Link
+                href="/solutions"
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-block ${
+                  pathname.startsWith('/solutions')
+                    ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                    : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                }`}
+              >
+                Solutions
+              </Link>
+              {/* Dropdown for Solutions */}
+              <div className="absolute top-full left-0 mt-2 w-48 rounded-xl bg-[#1A1A1A] border border-[#333333] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 py-2">
+                <Link href="/solutions/enterprise" className="block px-4 py-2 text-sm text-[#F5F5F5] hover:bg-[#252525] hover:text-[#FFD54F]">Enterprise Solutions</Link>
+                <Link href="/solutions/developer" className="block px-4 py-2 text-sm text-[#F5F5F5] hover:bg-[#252525] hover:text-[#FFD54F]">Developer Solutions</Link>
+                <Link href="/solutions/creator" className="block px-4 py-2 text-sm text-[#F5F5F5] hover:bg-[#252525] hover:text-[#FFD54F]">Creator Solutions</Link>
+                <Link href="/solutions/education" className="block px-4 py-2 text-sm text-[#F5F5F5] hover:bg-[#252525] hover:text-[#FFD54F]">Education Solutions</Link>
+              </div>
+            </div>
+            
+            <Link
+              href="/contact"
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'contact'
+                isContact
                   ? 'text-[#FFD54F] bg-[#1A1A1A]'
                   : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
               }`}
             >
               Contact Us
-            </button>
+            </Link>
             {user && (
               <>
-                <button
-                  onClick={() => handleNavClick('dashboard')}
+                <Link
+                  href="/dashboard"
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    currentView === 'dashboard' || currentView === 'service-detail'
+                    isDashboard
                       ? 'text-[#FFD54F] bg-[#1A1A1A]'
                       : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
                   }`}
                 >
                   Dashboard
-                </button>
-                <button
-                  onClick={() => handleNavClick('chat')}
+                </Link>
+                {profile?.accountType === 'developer' && (
+                  <Link
+                    href="/developer-center"
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      isDeveloperCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                        : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Developer Center
+                  </Link>
+                )}
+                {profile?.accountType === 'creator' && (
+                  <Link
+                    href="/creator-center"
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      isCreatorCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                        : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Creator Center
+                  </Link>
+                )}
+                {profile?.accountType === 'educator' && (
+                  <Link
+                    href="/educator-center"
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      isEducatorCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]'
+                        : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Educator Center
+                  </Link>
+                )}
+                <Link
+                  href="/chat"
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    currentView === 'chat'
+                    isChat
                       ? 'text-[#FFD54F] bg-[#1A1A1A]'
                       : 'text-[#F5F5F5] hover:text-[#FFD54F] hover:bg-[#1A1A1A]/60'
                   }`}
                 >
                   Chat
-                </button>
+                </Link>
               </>
             )}
           </nav>
@@ -152,7 +203,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                   <Settings className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => { signOut(); setCurrentView('home'); }}
+                  onClick={async () => { await signOut(); window.location.href = '/'; }}
                   className="p-2 rounded-xl bg-[#1A1A1A] border border-[#333333] text-[#BDBDBD] hover:text-red-400 hover:bg-[#252525] transition-all"
                   title="Sign Out"
                 >
@@ -160,12 +211,12 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => handleNavClick('login')}
+              <Link
+                href="/login"
                 className="px-5 py-2 rounded-lg bg-[#FFD54F] text-black hover:bg-[#FFCA28] font-bold text-sm uppercase tracking-wider transition-all duration-300 shadow-md shadow-[#FFD54F]/10 flex items-center"
               >
                 Login
-              </button>
+              </Link>
             )}
 
             {/* Mobile Hamburger Menu Toggle Button */}
@@ -182,73 +233,114 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setCurrentView }) =
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-[#333333] bg-[#121212] px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top duration-200">
-            <button
-              onClick={() => handleNavClick('home')}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'home' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+            <Link
+              href="/"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                isHome ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
               Home
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'models')}
-              className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:bg-[#1A1A1A]/60"
-            >
-              Models
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'products')}
-              className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors text-[#F5F5F5] hover:bg-[#1A1A1A]/60"
-            >
-              APIs & Agents
-            </button>
-            <button
-              onClick={() => handleNavClick('home', 'services')}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'solutions' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+            </Link>
+            <Link
+              href="/models"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                pathname === '/models' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
-              Enterprise Solutions
-            </button>
-            <button
-              onClick={() => handleNavClick('contact')}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                currentView === 'contact' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+              Models
+            </Link>
+            <div className="space-y-1">
+              <div className="px-4 py-2 text-xs font-bold text-[#BDBDBD] uppercase tracking-wider">Solutions</div>
+              <Link href="/solutions/enterprise" onClick={() => setMobileMenuOpen(false)} className="block px-8 py-2 text-sm text-[#F5F5F5] hover:text-[#FFD54F]">Enterprise</Link>
+              <Link href="/solutions/developer" onClick={() => setMobileMenuOpen(false)} className="block px-8 py-2 text-sm text-[#F5F5F5] hover:text-[#FFD54F]">Developer</Link>
+              <Link href="/solutions/creator" onClick={() => setMobileMenuOpen(false)} className="block px-8 py-2 text-sm text-[#F5F5F5] hover:text-[#FFD54F]">Creator</Link>
+              <Link href="/solutions/education" onClick={() => setMobileMenuOpen(false)} className="block px-8 py-2 text-sm text-[#F5F5F5] hover:text-[#FFD54F]">Education</Link>
+            </div>
+            
+            <Link
+              href="/contact"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                isContact ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
               }`}
             >
               Contact Us
-            </button>
+            </Link>
             {!user ? (
-              <button
-                onClick={() => handleNavClick('login')}
-                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                  currentView === 'login' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                  pathname === '/login' ? 'text-[#FFD54F] bg-[#1A1A1A]' : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
                 }`}
               >
                 Login
-              </button>
+              </Link>
             ) : (
               <>
-                <button
-                  onClick={() => handleNavClick('dashboard')}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                    currentView === 'dashboard' || currentView === 'service-detail'
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                    isDashboard
                       ? 'text-[#FFD54F] bg-[#1A1A1A]' 
                       : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
                   }`}
                 >
                   Dashboard
-                </button>
-                <button
-                  onClick={() => handleNavClick('chat')}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
-                    currentView === 'chat'
+                </Link>
+                {profile?.accountType === 'developer' && (
+                  <Link
+                    href="/developer-center"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                      isDeveloperCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]' 
+                        : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Developer Center
+                  </Link>
+                )}
+                {profile?.accountType === 'creator' && (
+                  <Link
+                    href="/creator-center"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                      isCreatorCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]' 
+                        : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Creator Center
+                  </Link>
+                )}
+                {profile?.accountType === 'educator' && (
+                  <Link
+                    href="/educator-center"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                      isEducatorCenter
+                        ? 'text-[#FFD54F] bg-[#1A1A1A]' 
+                        : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
+                    }`}
+                  >
+                    Educator Center
+                  </Link>
+                )}
+                <Link
+                  href="/chat"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-colors ${
+                    isChat
                       ? 'text-[#FFD54F] bg-[#1A1A1A]' 
                       : 'text-[#F5F5F5] hover:bg-[#1A1A1A]/60'
                   }`}
                 >
                   Chat
-                </button>
+                </Link>
               </>
             )}
           </div>

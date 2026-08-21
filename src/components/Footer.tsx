@@ -1,9 +1,18 @@
+'use client';
+
 import React, { useState } from 'react';
 import { ShieldCheck, Globe } from 'lucide-react';
 import { PrivacyPolicyModal } from '@/components/PrivacyPolicyModal';
+import { usePathname } from 'next/navigation';
 
 export const Footer: React.FC = () => {
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const pathname = usePathname();
+
+  const hiddenRoutes = ['/chat', '/dashboard', '/educator-center', '/creator-center', '/developer-center', '/student', '/student/learn'];
+  if (hiddenRoutes.includes(pathname)) {
+    return null;
+  }
 
   return (
     <>
